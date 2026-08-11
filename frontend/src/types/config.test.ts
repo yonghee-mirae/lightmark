@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG } from './config';
 describe('DEFAULT_CONFIG', () => {
   it('matches the docs/CONFIG_SPEC.md schema', () => {
     expect(DEFAULT_CONFIG).toEqual({
-      theme: 'github-dark',
+      theme: 'github-light',
       customCss: '',
       fontFamily: 'Pretendard',
       codeFontFamily: 'JetBrains Mono',

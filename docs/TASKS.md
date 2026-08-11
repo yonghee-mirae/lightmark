@@ -12,9 +12,9 @@
 - [x] Breadcrumb Engine
 
 ## Milestone 3
-- [ ] Theme Engine
-- [ ] Custom CSS
-- [ ] Font Loader
+- [x] Theme Engine
+- [x] Custom CSS
+- [x] Font Loader
 
 ## Milestone 4
 - [ ] Mermaid Lazy Load

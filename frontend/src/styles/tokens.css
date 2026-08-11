@@ -5,6 +5,7 @@
   --lm-color-bg: #ffffff;
   --lm-color-fg: #1f2328;
   --lm-color-border: #d0d7de;
+  --lm-color-muted: #656d76;
   --lm-color-accent: #0969da;
   --lm-font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --lm-font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -17,5 +18,6 @@
     --lm-color-bg: #0d1117;
     --lm-color-fg: #e6edf3;
     --lm-color-border: #30363d;
+    --lm-color-muted: #8b949e;
   }
 }

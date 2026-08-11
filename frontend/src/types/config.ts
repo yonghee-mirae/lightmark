@@ -16,7 +16,7 @@ export interface Config {
 }
 
 export const DEFAULT_CONFIG: Config = {
-  theme: 'github-dark',
+  theme: 'github-light',
   customCss: '',
   fontFamily: 'Pretendard',
   codeFontFamily: 'JetBrains Mono',

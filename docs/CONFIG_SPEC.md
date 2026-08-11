@@ -8,7 +8,7 @@ Linux: ~/.config/LightMark/config.json
 ## Schema
 ```json
 {
-  "theme":"github-dark",
+  "theme":"github-light",
   "customCss":"",
   "fontFamily":"Pretendard",
   "codeFontFamily":"JetBrains Mono",

@@ -59,7 +59,7 @@ lm-viewer {
 }
 
 .lm-empty {
-  color: var(--lm-color-border);
+  color: var(--lm-color-muted);
 }
 
 /* Breadcrumb: a toast over the top of the viewer pane, not a permanently docked row. Fades in on
@@ -135,6 +135,8 @@ lm-toc a.active {
 .lm-markdown {
   max-width: 860px;
   line-height: 1.6;
+  /* Zoom applies only to the rendered content, not toolbar/statusbar (docs/PLAN.md M3). */
+  font-size: calc(1rem * var(--lm-zoom));
 }
 
 .lm-markdown pre {
@@ -172,4 +174,29 @@ lm-toc a.active {
 .lm-math-block {
   display: block;
   padding: 0.25rem 0;
+}
+
+/* Print (docs/PLAN.md M3 / CLAUDE.md Print Rules): chrome hidden, code blocks not split across
+   pages. `printUseLightTheme` is applied by core/theme.ts as the `.lm-print-light` class on
+   <html>; the values need `!important` here because core/theme.ts sets the same variables as
+   inline styles on the same element, which would otherwise always win over a stylesheet rule. */
+@media print {
+  lm-toolbar,
+  lm-toc,
+  lm-statusbar,
+  lm-breadcrumb {
+    display: none !important;
+  }
+
+  .lm-markdown pre {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .lm-print-light {
+    --lm-color-bg: #ffffff !important;
+    --lm-color-fg: #1f2328 !important;
+    --lm-color-border: #d0d7de !important;
+    --lm-color-accent: #0969da !important;
+  }
 }

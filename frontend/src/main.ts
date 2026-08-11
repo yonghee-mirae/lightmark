@@ -6,6 +6,7 @@ import './components/lm-statusbar';
 import { createBackend } from './platform/backend';
 import { renderMarkdown } from './core/markdown';
 import { buildToc } from './core/toc';
+import { applyTheme } from './core/theme';
 import type { LmToolbar } from './components/lm-toolbar';
 import type { LmViewer, FileDropDetail, ActiveHeadingDetail } from './components/lm-viewer';
 import type { LmStatusbar } from './components/lm-statusbar';
@@ -13,6 +14,8 @@ import type { LmToc } from './components/lm-toc';
 import type { LmBreadcrumb } from './components/lm-breadcrumb';
 
 const backend = createBackend();
+
+void backend.readConfig().then((config) => applyTheme(config));
 
 const maybeToolbar = document.querySelector<LmToolbar>('lm-toolbar');
 const maybeViewer = document.querySelector<LmViewer>('lm-viewer');

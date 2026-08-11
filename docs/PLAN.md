@@ -146,6 +146,15 @@ export type Unwatch = () => void;
 
 **검증**: 테마 전환 시 깜빡임 없음, 인쇄 미리보기에서 툴바/TOC/상태바 미표시, zoom 50~200% 레이아웃 정상.
 
+**구현 후 확정된 사항**:
+- 계획대로 전부 `core/theme.ts` 한 파일에 둔다(디렉토리 구조 문서와 동일). `computeCssVars(config)`는 순수 함수(테마 토큰/폰트 스택/줌 계산)라 Vitest로 검증하고, `applyTheme(config, root?)`만 `root.style.setProperty`로 `:root` 변수를 주입하고 `<style id="lm-custom">`을 통째로 교체하는 DOM 부수효과를 담당한다 — M2의 `markdown.ts`(순수) vs `lm-viewer.ts`(DOM)와 같은 분리 원칙.
+- `main.ts`에서 시작 시 `backend.readConfig()` 결과로 `applyTheme()`을 1회 호출. `WebBackend.readConfig()`는 항상 `DEFAULT_CONFIG`를 즉시 resolve하는 마이크로태스크라 첫 페인트 전에 끝나 깜빡임이 없다(실측: M5 이전에는 Web 모드에서 config.json을 실제로 읽지 않으므로 이 값이 사실상 유일한 소스).
+- **`!important`가 필요한 이유**: `printUseLightTheme`는 `<html>`에 `.lm-print-light` 클래스를 토글해 인쇄 시 라이트 테마로 강제하는데, 같은 `<html>`에 `applyTheme`이 인라인 `style`로 색상 변수를 이미 주입해 두었다. 인라인 스타일은 그 자체로 대부분의 스타일시트 규칙보다 우선하므로, `@media print { .lm-print-light { ... } }`의 값에 `!important`를 붙이지 않으면 인쇄 시에도 인라인 값이 그대로 이겨 라이트 테마 강제가 무효화된다.
+- 폰트: `fontFamily`/`codeFontFamily`가 공백을 포함하면(`JetBrains Mono` 등) CSS `font-family` 목록 규칙상 반드시 quote 처리해야 해서 `buildFontStack`이 공백 포함 여부로 분기한다.
+- Zoom: `--lm-zoom`(줌 퍼센트/100)을 `.lm-markdown`에만 `font-size: calc(1rem * var(--lm-zoom))`로 적용한다. 툴바/상태바는 이 변수를 참조하지 않으므로 별도 처리 없이 요구사항("툴바/상태바 크기 고정")을 만족한다.
+- **결정: 툴바 Zoom 버튼 배선은 M5 이후로 미룬다.** M3는 CSS/변수 경로(config → `--lm-zoom` → 레이아웃)만 범위로 하고, 그 값을 사용자가 직접 바꾸는 UI는 다루지 않는다. 이유: Web 모드에서 `WebBackend.readConfig()`는 항상 `DEFAULT_CONFIG`만 반환해 config.json이 실제로 읽히지 않으므로(M5 "Config System"에서 해결), 지금 버튼을 배선해도 값을 저장/반영할 실제 대상이 없다. 검증("zoom 50~200% 레이아웃 정상")은 이번엔 `DEFAULT_CONFIG.zoom`을 코드에서 임시로 바꿔 눈으로 확인하는 방식으로 대체했다 — M5에서 Config System이 붙으면 그때 툴바 Zoom 버튼을 실제로 배선한다.
+- **버그 수정: `--lm-color-border`를 텍스트 색으로 재사용하면 안 됨.** `lm-viewer`의 빈 상태 안내문(`.lm-empty`)이 `--lm-color-border`를 글자색으로 썼는데, border는 divider용 저대비 색이라 dark 테마(`#30363d` on `#0d1117`)에서 거의 안 보였다. 별도의 `--lm-color-muted`(secondary text) 토큰을 테마별로 추가(`github-light: #656d76`, `github-dark: #8b949e`)해 `.lm-empty`가 이걸 쓰도록 수정. `tokens.css`의 pre-JS 기본값에도 동일하게 추가.
+
 ---
 
 ### M4 — 지연 로딩 (Mermaid / KaTeX / Shiki)
@@ -182,6 +191,8 @@ Config의 `mermaid`/`katex`/`syntaxHighlight`가 false면 import 자체를 하�
 **의존성**: `notify`, `serde`/`serde_json`, `tokio`, `axum`(dev 전용), `dirs`. `dirs`와 `axum`은 CLAUDE.md 허용 목록에 없으므로 M5 착수 시 승인 필요 — 아래 Open Questions 참고.
 
 **검증**: 두 터미널로 dev 서버 + Vite 실행 → Firefox에서 `?file=docs/PRD.md`로 열고 다른 편집기에서 저장 → 500ms 내 갱신되며 스크롤 위치 유지. Vim(rename 저장)과 VSCode 양쪽으로 확인. `cargo test -p backend`.
+
+**M3에서 미룬 것**: 툴바 Zoom 버튼 배선(M3 절 참고). Config System이 실제로 config.json을 읽고/반영하게 되는 시점이라 여기서 같이 처리한다.
 
 ---
 
