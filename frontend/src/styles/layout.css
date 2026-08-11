@@ -167,6 +167,11 @@ lm-toc a.active {
   color: var(--lm-color-fg);
 }
 
+.lm-image {
+  max-width: 100%;
+  height: auto;
+}
+
 .lm-math {
   font-family: var(--lm-font-code);
 }
@@ -174,6 +179,38 @@ lm-toc a.active {
 .lm-math-block {
   display: block;
   padding: 0.25rem 0;
+}
+
+/* Mermaid diagrams (docs/PLAN.md M4): the SVG mermaid.render() returns can be wider than the
+   pane on a big diagram, so it needs the same overflow handling as code blocks rather than
+   pushing .lm-markdown's own width out. */
+.lm-mermaid {
+  overflow-x: auto;
+  text-align: center;
+}
+
+.lm-mermaid svg {
+  max-width: 100%;
+}
+
+/* Mermaid/KaTeX render-failure notices (docs/PLAN.md M4). Not tied to theme tokens - warnings
+   should stand out the same way regardless of light/dark theme. */
+.lm-render-warning {
+  margin: 0.25rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1242f;
+  border-radius: 4px;
+  background: rgb(209 36 47 / 10%);
+  color: #d1242f;
+  font-size: 0.9em;
+}
+
+.lm-render-warning-inline {
+  border: 1px solid #d1242f;
+  border-radius: 3px;
+  background: rgb(209 36 47 / 10%);
+  padding: 0 0.15em;
+  color: #d1242f;
 }
 
 /* Print (docs/PLAN.md M3 / CLAUDE.md Print Rules): chrome hidden, code blocks not split across

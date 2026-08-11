@@ -17,9 +17,9 @@
 - [x] Font Loader
 
 ## Milestone 4
-- [ ] Mermaid Lazy Load
-- [ ] KaTeX Lazy Load
-- [ ] Shiki Lazy Load
+- [x] Mermaid Lazy Load
+- [x] KaTeX Lazy Load
+- [x] Shiki Lazy Load
 
 ## Milestone 5
 - [ ] Rust Watcher

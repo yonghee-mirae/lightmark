@@ -169,6 +169,22 @@ Config의 `mermaid`/`katex`/`syntaxHighlight`가 false면 import 자체를 하�
 
 **검증**: 세 요소가 없는 문서를 열었을 때 Network 탭에 해당 청크 요청이 없음(각 기능당 1회씩 확인). `npm run build` 후 청크가 분리되어 있고 초기 번들에 포함되지 않음.
 
+**구현 후 확정된 사항**:
+- `core/lazy/mermaid.ts`/`katex.ts`/`shiki.ts` 3개 파일, 각각 계획대로 모듈 레벨 캐시 프로미스 + "대상 노드 없으면 import 자체를 안 함" 가드를 가진다. 호출은 `lm-viewer.ts`의 `setContent()`가 DOM에 HTML을 심은 직후 `enhance()`에서 순서대로: **mermaid → shiki → katex**. mermaid를 먼저 하는 이유는 shiki의 코드블록 탐색 시점에 `language-mermaid` 블록이 이미 `<svg>`로 교체돼 있어야 shiki가 그걸 코드로 잘못 하이라이트하지 않기 때문(shiki 자체에도 별도로 `language-mermaid` 제외 필터를 둬서 mermaid config가 꺼져 있을 때도 안전).
+- Config의 `mermaid`/`katex`/`syntaxHighlight` 플래그 체크는 `lm-viewer.ts`(호출 여부)에서, "대상 노드 존재 여부" 체크는 각 `lazy/*.ts` 내부에서 — 두 조건 모두 참일 때만 실제 `import()`가 일어난다. `main.ts`가 시작 시 읽은 config를 저장해 두고(M3에서 추가한 `currentConfig`) `loadFile()`에서 `viewer.setContent(html, headings, { theme, mermaid, katex, syntaxHighlight })`로 넘긴다.
+- **Shiki는 언어별 지연 로딩을 자체적으로 이미 구현하고 있다.** `shiki`(fine-grained이 아닌 "full" 배럴)를 그냥 `import()`해도, 배럴 안의 모든 언어/테마 항목은 `() => import('@shikijs/langs/...')` 형태의 클로저로만 존재하고 실제로 요청한 언어만 dynamic import된다 — 그래서 우리 쪽에서 문서에 등장한 언어 목록을 따로 추적해 allowlist를 만들 필요가 없다. 테마 이름도 우리 Config의 `theme` 값(`github-light`/`github-dark`)이 Shiki의 내장 테마 이름과 그대로 일치해서 별도 매핑이 필요 없다.
+- KaTeX CSS는 `import('katex/dist/katex.css')`로 JS와 함께 동적 import(`Promise.all`) — Vite가 이 청크를 code-split해서 실제 사용 시점에만 `<link>`를 주입한다. 별도 `<link rel=stylesheet>` 수동 관리 코드가 필요 없다.
+- 셋 다 잘못된 입력(오타 언어명, 문법 오류 있는 mermaid/수식)에 대해 개별 블록 단위로 try/catch해서 원본을 그대로 두고 넘어간다 — 임의의 사용자 마크다운을 여는 뷰어라 이런 입력은 실제로 발생 가능한 경우라 방어 처리 대상으로 판단.
+- **버그 수정: 잘못된 mermaid 문법이 try/catch에 안 걸림.** `mermaid.render()`는 문법 오류가 있어도 reject하지 않고, 대신 mermaid 내장 "error diagram"(빨간 에러 아이콘 + `Syntax error in text` + `mermaid version X.Y.Z` 텍스트가 든 SVG)을 정상적으로 resolve해버린다. 그래서 render() 주변 try/catch는 이 실패 케이스를 절대 못 잡고, 화면에는 원본 코드블록 대신 저 에러 SVG가 그대로 표시됐다(`samples/all-features.md`의 의도적으로 깨뜨린 mermaid 블록에서 실제로 재현됨). 수정: `render()` 호출 전에 `mermaid.parse(source, { suppressErrors: true })`로 먼저 검증하고, `false`가 돌아오면 render()를 호출하지 않고 원본 코드블록을 그대로 둔다. try/catch는 그 외의(파싱은 통과했지만 렌더링 단계에서 나는) 오류에 대한 방어로 남겨둠.
+- **실패 시 눈에 띄는 경고 표시 (사용자 요청으로 추가).** 원래는 "실패하면 원본을 그대로 둔다"만 했는데, 그러면 뭐가 잘못됐는지 표시가 전혀 없어서 사용자 요청으로 ⚠️ 이모지가 붙은 경고 문구를 추가했다.
+  - mermaid: `core/lazy/warning.ts`의 `renderWarning(message)`가 `<p class="lm-render-warning">⚠️ ...</p>`를 만들어 원본 `<pre>` 앞에 삽입(`pre.before(...)`) — mermaid 블록은 항상 block 컨텍스트(자기 `<pre>`)라 안전.
+  - KaTeX: `throwOnError: false`(기본값)는 던지지 않고 KaTeX 자체의 에러 span(눈에 잘 안 띄는 빨간 텍스트)을 렌더해버려서 mermaid와 같은 문제가 있었다 — `throwOnError: true`로 바꿔 실제로 던지게 하고, catch에서 우리 경고로 교체한다. `.lm-math`는 문단 안 인라인 `<span>`일 수 있어서(블록 `<div>`인 경우도 있음) `renderWarning()`처럼 새 엘리먼트를 형제로 끼워넣지 않고, 노드 자체의 텍스트/클래스를 그 자리에서 바꾼다(`node.textContent = '⚠️ Invalid math: ...'`, `.lm-render-warning-inline` 클래스 추가) — 인라인/블록 어느 쪽이든 DOM 중첩 규칙을 깨지 않음.
+  - CSS(`layout.css`)의 `.lm-render-warning`/`.lm-render-warning-inline`은 테마 토큰과 무관하게 고정된 빨간 계열 색(`#d1242f`)을 쓴다 — 경고는 라이트/다크 어느 테마든 동일하게 눈에 띄어야 하기 때문.
+- **뒤늦게 발견/수정: 이미지 lazy loading이 어느 마일스톤에도 배정 안 돼 있었음.** `CLAUDE.md`의 "Images: Use lazy loading" 규칙은 M1~M4 어디에도 작업 항목으로 들어가 있지 않아서 그동안 빠져 있었다(존재하지 않는 이미지가 어떻게 보이는지 사용자가 물어보다가 드러남). 이번에 같이 처리:
+  - `core/markdown.ts`: `lm_image_attrs`라는 core 룰을 추가해 모든 `image` 토큰에 `loading="lazy"`와 `class="lm-image"`를 부여(task list/heading id 룰과 같은 패턴 — 렌더러를 새로 만들지 않고 토큰에 속성만 얹음).
+  - `layout.css`: `.lm-image { max-width: 100%; height: auto; }`로 뷰어보다 큰 원본 이미지가 폭을 뚫고 나가지 않게 함.
+  - `core/images.ts`(신규, `core/lazy/`가 아님 — 임포트할 외부 라이브러리가 없어서 지연 로딩 패턴이 필요 없음): `<img>`마다 `error` 이벤트를 1회 리스닝해서, 실제로 로드에 실패하면 브라우저 기본 "깨진 이미지" 아이콘 대신 `.lm-render-warning-inline`(mermaid/KaTeX와 동일한 경고 스타일)로 교체. `lm-viewer.ts`의 `setContent()`에서 HTML을 심은 직후 동기적으로 호출(비동기 `enhance()`보다 먼저 — 에러 리스너는 이미지 로드가 시작되기 전에 붙어 있어야 함).
+
 ---
 
 ### M5 — Rust 백엔드 + Dev 서버 + 어댑터

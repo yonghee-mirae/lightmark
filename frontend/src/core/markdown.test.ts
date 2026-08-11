@@ -28,6 +28,11 @@ describe('renderMarkdown', () => {
     expect(html).toContain('<div class="lm-math lm-math-block">y = mx + b</div>');
   });
 
+  it('adds native lazy loading and a class to images', () => {
+    const { html } = renderMarkdown('![a cat](cat.png)');
+    expect(html).toContain('<img src="cat.png" alt="a cat" loading="lazy" class="lm-image">');
+  });
+
   it('assigns stable, deduplicated ids to headings and returns them', () => {
     const { html, headings } = renderMarkdown('# Intro\n\n## Intro\n\n# Next');
     expect(headings).toEqual([

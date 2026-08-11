@@ -111,6 +111,24 @@ const renderMathBlock: RendererRule = (tokens, idx) =>
   `<div class="lm-math lm-math-block">${md.utils.escapeHtml(tokens[idx]?.content ?? '')}</div>`;
 md.renderer.rules['math_block'] = renderMathBlock;
 
+// --- Images: native lazy loading (CLAUDE.md "Images: Use lazy loading") + a class for CSS
+// (responsive max-width, docs/PLAN.md M4) and for the runtime broken-image check in
+// core/images.ts to target ---
+function imageAttrsRule(state: StateCore): void {
+  for (const token of state.tokens) {
+    if (token.type !== 'inline' || !token.children) {
+      continue;
+    }
+    for (const child of token.children) {
+      if (child.type === 'image') {
+        child.attrSet('loading', 'lazy');
+        child.attrSet('class', 'lm-image');
+      }
+    }
+  }
+}
+md.core.ruler.push('lm_image_attrs', imageAttrsRule);
+
 // --- Headings: assign a stable id (for TOC/breadcrumb + anchor scroll) and collect them ---
 function headingsRule(state: StateCore): void {
   const env = state.env as MarkdownEnv;

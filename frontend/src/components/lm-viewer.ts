@@ -4,6 +4,10 @@
 // can miss: fast scrolling skipping past the trip wire entirely between two samples.
 
 import type { Heading } from '../core/markdown';
+import { renderMermaid } from '../core/lazy/mermaid';
+import { renderMath } from '../core/lazy/katex';
+import { highlightCode } from '../core/lazy/shiki';
+import { handleBrokenImages } from '../core/images';
 
 export interface FileDropDetail {
   name: string;
@@ -12,6 +16,16 @@ export interface FileDropDetail {
 
 export interface ActiveHeadingDetail {
   id: string;
+}
+
+// Which lazy-loaded renderers to run for this document (docs/PLAN.md M4). `theme` is only used
+// by the syntax highlighter (Shiki ships themes literally named 'github-light'/'github-dark',
+// matching docs/CONFIG_SPEC.md's `theme` values).
+export interface RenderOptions {
+  theme: string;
+  mermaid: boolean;
+  katex: boolean;
+  syntaxHighlight: boolean;
 }
 
 export class LmViewer extends HTMLElement {
@@ -30,7 +44,7 @@ export class LmViewer extends HTMLElement {
     this.removeEventListener('scrollend', this.reconcileActiveHeading);
   }
 
-  setContent(html: string, headings: Heading[]): void {
+  setContent(html: string, headings: Heading[], options: RenderOptions): void {
     this.observer?.disconnect();
     this.activeId = null;
     this.replaceChildren();
@@ -39,11 +53,30 @@ export class LmViewer extends HTMLElement {
     article.className = 'lm-markdown';
     article.innerHTML = html;
     this.appendChild(article);
+    handleBrokenImages(article);
 
     this.observeHeadings();
     const first = headings[0];
     if (first) {
       this.setActive(first.id);
+    }
+
+    void this.enhance(article, options);
+  }
+
+  // Mermaid/KaTeX/Shiki, in that order so Shiki's code-block query never sees a still-pending
+  // ```mermaid fence (mermaid replaces its <pre> with an <svg> once done). Each import happens
+  // only if its config flag is on AND the target nodes actually exist (docs/PLAN.md M4) - the
+  // existence check lives inside each lazy/*.ts function, not here.
+  private async enhance(article: HTMLElement, options: RenderOptions): Promise<void> {
+    if (options.mermaid) {
+      await renderMermaid(article);
+    }
+    if (options.syntaxHighlight) {
+      await highlightCode(article, options.theme);
+    }
+    if (options.katex) {
+      await renderMath(article);
     }
   }
 

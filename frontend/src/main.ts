@@ -7,6 +7,8 @@ import { createBackend } from './platform/backend';
 import { renderMarkdown } from './core/markdown';
 import { buildToc } from './core/toc';
 import { applyTheme } from './core/theme';
+import { DEFAULT_CONFIG } from './types/config';
+import type { Config } from './types/config';
 import type { LmToolbar } from './components/lm-toolbar';
 import type { LmViewer, FileDropDetail, ActiveHeadingDetail } from './components/lm-viewer';
 import type { LmStatusbar } from './components/lm-statusbar';
@@ -15,7 +17,13 @@ import type { LmBreadcrumb } from './components/lm-breadcrumb';
 
 const backend = createBackend();
 
-void backend.readConfig().then((config) => applyTheme(config));
+// Read once at startup; loadFile() below reads from this for the lazy-loader flags (M4). Starts
+// as DEFAULT_CONFIG so an extremely fast file-open can't race ahead of the readConfig() microtask.
+let currentConfig: Config = DEFAULT_CONFIG;
+void backend.readConfig().then((config) => {
+  currentConfig = config;
+  applyTheme(config);
+});
 
 const maybeToolbar = document.querySelector<LmToolbar>('lm-toolbar');
 const maybeViewer = document.querySelector<LmViewer>('lm-viewer');
@@ -46,7 +54,12 @@ function loadFile(name: string, content: string): void {
   // listener (below) would otherwise update toc/breadcrumb against the previous document.
   toc.setToc(buildToc(headings));
   breadcrumb.setHeadings(headings);
-  viewer.setContent(html, headings);
+  viewer.setContent(html, headings, {
+    theme: currentConfig.theme,
+    mermaid: currentConfig.mermaid,
+    katex: currentConfig.katex,
+    syntaxHighlight: currentConfig.syntaxHighlight,
+  });
   statusbar.setFilename(name);
 }
 
