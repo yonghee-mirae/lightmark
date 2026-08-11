@@ -1,10 +1,10 @@
 # Development Tasks
 
 ## Milestone 1
-- [ ] Bootstrap Vite TS
-- [ ] Setup Web Components
-- [ ] Setup ESLint/Prettier (Tauri import 격리 규칙 포함)
-- [ ] Setup Vitest
+- [x] Bootstrap Vite TS
+- [x] Setup Web Components
+- [x] Setup ESLint/Prettier (Tauri import 격리 규칙 포함)
+- [x] Setup Vitest
 
 ## Milestone 2
 - [ ] Markdown Renderer

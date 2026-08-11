@@ -1,0 +1,60 @@
+/* Toolbar / Breadcrumb / Content(TOC+Viewer) / Status Bar per docs/UI_SPEC.md */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--lm-color-bg);
+  color: var(--lm-color-fg);
+  font-family: var(--lm-font-body);
+}
+
+#app {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  height: 100vh;
+}
+
+lm-toolbar,
+lm-breadcrumb {
+  display: block;
+  border-bottom: 1px solid var(--lm-color-border);
+  padding: 0.5rem 1rem;
+}
+
+lm-statusbar {
+  display: flex;
+  gap: 1rem;
+  border-top: 1px solid var(--lm-color-border);
+  padding: 0.35rem 1rem;
+  font-size: 0.85rem;
+}
+
+.lm-content {
+  display: grid;
+  grid-template-columns: var(--lm-toc-width) 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+lm-toc {
+  display: block;
+  border-right: 1px solid var(--lm-color-border);
+  overflow-y: auto;
+}
+
+lm-viewer {
+  display: block;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.lm-raw {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--lm-font-code);
+}
+
+.lm-empty {
+  color: var(--lm-color-border);
+}
