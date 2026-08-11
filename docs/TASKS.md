@@ -22,10 +22,10 @@
 - [x] Shiki Lazy Load
 
 ## Milestone 5
-- [ ] Rust Watcher
-- [ ] Config System
-- [ ] Dev Server (Tauri 비의존, axum+SSE)
-- [ ] Adapter Layer (Web / Dev / Tauri)
+- [x] Rust Watcher
+- [x] Config System
+- [x] Dev Server (Tauri 비의존, axum+SSE)
+- [x] Adapter Layer (Web / Dev / Tauri) — Tauri는 M6에서
 
 ## Milestone 6
 - [ ] Tauri Integration

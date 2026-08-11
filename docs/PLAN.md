@@ -208,7 +208,21 @@ Config의 `mermaid`/`katex`/`syntaxHighlight`가 false면 import 자체를 하�
 
 **검증**: 두 터미널로 dev 서버 + Vite 실행 → Firefox에서 `?file=docs/PRD.md`로 열고 다른 편집기에서 저장 → 500ms 내 갱신되며 스크롤 위치 유지. Vim(rename 저장)과 VSCode 양쪽으로 확인. `cargo test -p backend`.
 
-**M3에서 미룬 것**: 툴바 Zoom 버튼 배선(M3 절 참고). Config System이 실제로 config.json을 읽고/반영하게 되는 시점이라 여기서 같이 처리한다.
+**M3에서 미룬 것**: 툴바 Zoom 버튼 배선(M3 절 참고). Config System은 이번에 붙었지만 **쓰기(config.json 저장)는 여전히 없다** — `CLAUDE.md` "No graphical settings editor" 규칙대로 IPC/HTTP에 config를 쓰는 커맨드 자체가 없고(`read`/`reload`/`reset`만 존재), 그래서 이번에도 Zoom 버튼 배선은 하지 않고 그대로 미룸(M3 절의 "여기서 같이 처리한다"는 예상이 빗나감 — 정정).
+
+**구현 후 확정된 사항**:
+- **의존성 승인**: `axum`은 대체 불가(경량 HTTP+SSE 서버 자체 구현이 더 위험/복잡)로 그대로 승인. `dirs`는 사용자에게 대안(OS별 경로 직접 분기, ~30줄)과 함께 물어봐서 **`dirs` 사용으로 확정**(Open Questions #2 해결) — `dirs::config_dir()`이 `CONFIG_SPEC.md`의 세 경로(Windows `%APPDATA%`, macOS `~/Library/Application Support`, Linux `~/.config`)와 정확히 일치해서 그대로 썼다.
+- **워크스페이스**: 루트 `Cargo.toml`은 지금은 `members = ["backend"]`만 (src-tauri는 M6에서 추가). `backend/Cargo.toml`은 `dev-server` feature가 꺼져 있으면 `axum`/`tokio`/`futures-core`를 전혀 컴파일하지 않는다(`optional = true` + feature gate) — `cargo build -p backend`(기본)로 실제 확인, 라이브러리 자체는 `notify`/`serde`/`serde_json`/`dirs`만 링크된다.
+- **watcher.rs**: 별도 디바운서 크레이트(`notify-debouncer-*`) 없이 `std::thread` + `mpsc::channel`로 직접 구현. 이벤트 하나가 오면 100ms 동안 추가 이벤트가 없을 때까지 계속 기다렸다가(`recv_timeout` 루프) 한 번만 콜백을 부른다. `event_affects()`가 감시 중인 정확한 경로가 `event.paths`에 있는지만 확인 — 부모 디렉토리를 통째로 감시하지만 필터링은 정확한 경로 일치로 좁힌다. 통합 테스트(`fires_once_for_a_burst_of_writes_to_the_watched_file`)로 "빠른 연속 쓰기 3번 → 콜백 1번"을 확인, 3회 반복 실행으로 타이밍 flakiness 없음을 확인.
+- **버그 수정(사용자 리포트): 파일을 열기만 해도(수정 없이) live reload가 계속 발동**. `event_affects()`가 처음엔 경로만 확인하고 `event.kind`는 전혀 안 봤다 — `notify`의 `EventKind::Access`(파일/핸들을 열거나 읽거나 닫음)도 경로만 일치하면 그대로 콜백을 불렀다. 에디터가 파일을 **열기만** 해도(내용 변경 없이) OS가 access 이벤트를 발생시키고, 파일이 열려 있는 동안 계속 발생할 수도 있어서 "계속 깜빡이는" 증상으로 나타났다. 수정: `event_affects()`가 `event.kind.is_create() || event.kind.is_modify()`도 같이 확인 — access 이벤트는 무시. 합성 `Event` 값으로 단위 테스트(`ignores_pure_access_events_but_reacts_to_modify_and_create`) 추가, 실제로 `cat`/`vim -c :q`(읽기만, 쓰기 없음)로 열었을 때 SSE 이벤트가 전혀 안 오고 실제 수정(`echo >>`) 시에만 오는 것을 재현해서 확인.
+- **config.rs**: `Config`에 `#[serde(rename_all = "camelCase", default)]` — 구조체 전체에 `default`를 붙이면 JSON에 없는 필드는 `Config::default()`에서 채워진다(부분 JSON 허용을 필드별 어노테이션 없이 한 줄로 해결). `reset_config()`은 기존 `config.json`을 `config.json.bak`로 복사(덮어쓰기, 히스토리 아님)한 뒤 기본값을 씀 — 실제로 파일 써서 백업/복원 확인.
+- **devserver.rs**: `tower-http` 없이 `middleware::from_fn`으로 CORS 헤더를 직접 얹었다(`Access-Control-Allow-Origin: http://localhost:5173` 고정) — 프론트에서 보내는 요청이 전부 커스텀 헤더/바디가 없는 "simple request"라 preflight(OPTIONS) 처리가 필요 없어서 이 정도로 충분하다.
+  - **`/api/events`는 `?path=` 쿼리 파라미터를 받는다** — `docs/IPC_SPEC.md`의 표엔 이 부분이 명시돼 있지 않아서(연결 종료=unwatch만 명시) 구현하면서 채운 세부사항.
+  - **연결 종료 = unwatch를 코드로 어떻게 보장했는지**: SSE 응답에 넘기는 `Stream`을 직접 구현한 `WatchStream` 구조체가 `mpsc::Receiver`와 `FileWatcher`를 **같이** 들고 있다. axum은 클라이언트가 연결을 끊으면 이 스트림을 그냥 drop하는데, 그 순간 `WatchStream`도 통째로 drop되면서 `FileWatcher`(=`notify` watcher)도 같이 drop되어 감시가 실제로 멈춘다 — 별도 "unwatch" 로직이 필요 없고 Rust의 ownership/Drop이 그대로 처리한다. `curl`로 SSE 연결 후 강제 종료해도 서버가 죽지 않고(devserver.log에 panic 없음) 이후 `/api/health`가 계속 정상 응답하는 것으로 확인.
+- **`platform/dev.ts`**: `IPC_SPEC.md`의 Dev Server 표에 `open_file` 행이 없다는 걸 근거로 `openFile()`은 미지원(reject)으로 처리 — 대신 실제 파일은 `readFile(path)`(→ `GET /api/file?path=`)로 열고, 그 경로는 **main.ts가 `?file=` URL 쿼리 파라미터로 받는다**(브라우저에는 네이티브 열기 다이얼로그가 없으므로). `openConfigFolder`/`openConfigFile`도 표의 "미지원(capabilities.configFile=false)"대로 reject.
+- **`createBackend()`가 비동기로 바뀜**: 계획대로 헬스체크(`GET /api/health`, 300ms 타임아웃)로 Dev 모드를 판별해야 하는데 이건 본질적으로 비동기라, `platform/backend.ts`의 팩토리를 `Promise<BackendApi>`로 바꾸고 `main.ts` 최상단에서 top-level `await`로 받는다(`tsconfig`가 `target: ES2022`라 모듈 최상위 await가 바로 동작). Tauri 분기(`window.__TAURI_INTERNALS__`)는 M6에서 `platform/tauri.ts`가 생기면 추가 — 지금은 Dev/Web 둘만 분기.
+- **Live reload 스크롤 앵커**: `lm-viewer.ts`에 `getActiveId()`/`scrollToHeading(id)`를 공개 메서드로 추가. `main.ts`의 `reloadFile()`이 재렌더 전에 `getActiveId()`로 현재 활성 heading을 저장했다가, 재렌더 후 `scrollToHeading()`으로 같은 heading으로 되돌린다.
+- **검증**: `cargo fmt --check`/`cargo clippy --all-features` 무경고, `cargo test -p backend` 6개 전부 통과. devserver를 실제로 띄워서 모든 엔드포인트를 `curl`로 직접 확인(health/file 200·404/config get·reload·reset·백업/SSE 디바운스 단일 발화). 헤드리스 Chrome으로 실제 브라우저에서 `createBackend()`가 Dev 모드를 정확히 감지하는 것(`capabilities: {watch:true, configFile:false}`)까지는 콘솔 로그로 확인했지만, `?file=` → 렌더까지 이어지는 전체 파이프라인의 최종 DOM 결과는 헤드리스 `--dump-dom`이 `load` 이벤트 시점에 캡처돼서 그 이후에 resolve되는 fetch를 못 잡는 도구 한계로 캡처하지 못했다 — 대신 그 경로가 호출하는 정확한 HTTP 엔드포인트(`GET /api/file?path=`, CORS 헤더 포함)를 `curl`로 직접 검증하고 코드 리뷰로 보완.
 
 ---
 
@@ -228,7 +242,7 @@ Config의 `mermaid`/`katex`/`syntaxHighlight`가 false면 import 자체를 하�
 ## Open Questions (해당 마일스톤 착수 시점에 결정)
 
 1. **[해결됨] M2 — raw HTML 허용 여부**: `html: false`로 확정. `docs/*.md`를 grep한 결과 raw HTML은 전부 인라인 코드/코드블록 안에서만 등장(`<input type=file>`, `<span class="lm-math">` 등은 문서화 예시일 뿐)해서 실제로 깨지는 문서가 없다. sanitizer 의존성을 추가할 이유가 없으므로 보류.
-2. **M5 — `axum`, `dirs` 의존성 승인**: `axum`은 dev 전용 feature라 배포 바이너리 미포함. `dirs`는 3개 OS 경로 분기를 직접 짜면 없앨 수 있다(~30줄).
+2. **[해결됨] M5 — `axum`, `dirs` 의존성 승인**: 둘 다 승인. `axum`은 대체 수단이 없어(경량 서버 자체 구현이 더 위험) 그대로, `dirs`는 사용자에게 직접 구현 대안과 함께 확인받아 크레이트 사용으로 확정.
 
 ---
 

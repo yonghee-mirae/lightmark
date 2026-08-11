@@ -157,6 +157,17 @@ export class LmViewer extends HTMLElement {
     );
   }
 
+  /** The heading currently focused, so a live-reload re-render can ask for it back afterwards. */
+  getActiveId(): string | null {
+    return this.activeId;
+  }
+
+  // Live reload's scroll anchor (docs/PLAN.md M5): after a re-render, jump back to the heading
+  // that was active before the reload instead of snapping to the top of the document.
+  scrollToHeading(id: string): void {
+    this.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: 'start' });
+  }
+
   private handleDragOver = (event: DragEvent): void => {
     event.preventDefault();
   };

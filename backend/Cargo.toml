@@ -1,0 +1,27 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+# `dev-server` is off by default: the lib itself (file/watcher/config) has no async runtime or
+# HTTP dependency at all, so a Tauri release build linking against this crate never pulls in
+# axum/tokio (docs/PLAN.md M5).
+[features]
+# futures-core: just the `Stream` trait definition (no extra runtime/transitive deps of its own)
+# needed to hand axum's SSE response a stream that owns the FileWatcher for its lifetime - see
+# bin/devserver.rs's WatchStream.
+dev-server = ["axum", "tokio", "futures-core"]
+
+[dependencies]
+notify = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+axum = { version = "0.8", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"], optional = true }
+futures-core = { version = "0.3", optional = true }
+
+[[bin]]
+name = "devserver"
+path = "src/bin/devserver.rs"
+required-features = ["dev-server"]

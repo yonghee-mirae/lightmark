@@ -15,7 +15,7 @@ import type { LmStatusbar } from './components/lm-statusbar';
 import type { LmToc } from './components/lm-toc';
 import type { LmBreadcrumb } from './components/lm-breadcrumb';
 
-const backend = createBackend();
+const backend = await createBackend();
 
 // Read once at startup; loadFile() below reads from this for the lazy-loader flags (M4). Starts
 // as DEFAULT_CONFIG so an extremely fast file-open can't race ahead of the readConfig() microtask.
@@ -63,9 +63,61 @@ function loadFile(name: string, content: string): void {
   statusbar.setFilename(name);
 }
 
+// Live reload's watch state. Only ever one at a time - LightMark shows one document.
+let activeWatchPath: string | null = null;
+let unwatch: (() => void) | null = null;
+
+function stopWatching(): void {
+  unwatch?.();
+  unwatch = null;
+  activeWatchPath = null;
+}
+
+function watchPath(path: string): void {
+  stopWatching();
+  if (!backend.capabilities.watch) {
+    return;
+  }
+  activeWatchPath = path;
+  void backend
+    .watchFile(path, () => {
+      void backend.readFile(path).then((content) => reloadFile(basename(path), content));
+    })
+    .then((stop) => {
+      // The user may have opened something else while this promise was pending.
+      if (activeWatchPath === path) {
+        unwatch = stop;
+      } else {
+        stop();
+      }
+    });
+}
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+// Re-render but keep the reader's place instead of snapping back to the top of the document
+// (docs/PLAN.md M5 - without this, every save from the editor would jump live reload to the top).
+function reloadFile(name: string, content: string): void {
+  const anchor = viewer.getActiveId();
+  loadFile(name, content);
+  if (anchor) {
+    viewer.scrollToHeading(anchor);
+  }
+}
+
+function openPath(path: string): void {
+  void backend.readFile(path).then((content) => {
+    loadFile(basename(path), content);
+    watchPath(path);
+  });
+}
+
 toolbar.addEventListener('lm-open', () => {
   void backend.openFile().then((opened) => {
     if (opened) {
+      stopWatching();
       loadFile(opened.name, opened.content);
     }
   });
@@ -73,6 +125,7 @@ toolbar.addEventListener('lm-open', () => {
 
 viewer.addEventListener('lm-file-drop', (event) => {
   const { name, content } = (event as CustomEvent<FileDropDetail>).detail;
+  stopWatching();
   loadFile(name, content);
 });
 
@@ -81,3 +134,12 @@ viewer.addEventListener('lm-active-heading', (event) => {
   toc.setActive(id);
   breadcrumb.setActive(id);
 });
+
+// Dev/Tauri mode: there's no native "Open" dialog outside Tauri, so a real filesystem path opens
+// via `?file=<path>` instead of BackendApi.openFile() (docs/IPC_SPEC.md: open_file has no Dev
+// Server route). Gated on capabilities.watch since that's exactly the Web-vs-Dev/Tauri split for
+// "can this backend read an arbitrary path at all".
+const filePath = new URLSearchParams(location.search).get('file');
+if (filePath && backend.capabilities.watch) {
+  openPath(filePath);
+}

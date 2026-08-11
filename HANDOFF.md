@@ -8,9 +8,10 @@
 - **M2 (Markdown Renderer / TOC Engine / Breadcrumb Engine)**: 완료. 아래 "M2 구현 상세" 참고.
 - **M3 (Theme Engine / Custom CSS / Font Loader)**: 완료. 아래 "M3 구현 상세" 참고.
 - **M4 (Mermaid / KaTeX / Shiki 지연 로딩)**: 완료. 아래 "M4 구현 상세" 참고.
-- **M5~M6**: 미착수. `docs/TASKS.md`, `docs/PLAN.md` 참고.
+- **M5 (Rust 백엔드 + Dev 서버 + 어댑터)**: 완료. 아래 "M5 구현 상세" 참고.
+- **M6**: 미착수. `docs/TASKS.md`, `docs/PLAN.md` 참고.
 
-다음 세션은 사용자의 새 지시(M5 착수 등)를 기다리는 상태에서 시작.
+다음 세션은 사용자의 새 지시(M6 착수 등)를 기다리는 상태에서 시작.
 
 ## M2 구현 상세
 
@@ -99,10 +100,45 @@
 - `core/images.ts`(신규, **`core/lazy/`가 아님** — 임포트할 외부 라이브러리가 없어서 지연 로딩 캐시 프로미스 패턴이 필요 없음): `<img>`마다 `error` 이벤트 1회 리스닝, 실패 시 브라우저 기본 "깨진 이미지" 아이콘 대신 `.lm-render-warning-inline`(mermaid/KaTeX와 동일 스타일)로 교체. `lm-viewer.ts`의 `setContent()`에서 HTML 심은 직후 **동기적으로** 호출(비동기 `enhance()`보다 먼저 — 에러 리스너는 로드 시작 전에 붙어 있어야 함).
 - `samples/all-features.md`에 깨진 이미지 예시(`/no/such/image.png`) 추가.
 
+## M5 구현 상세
+
+### 의존성 승인 (Open Questions #2 해결)
+`axum`(대체 불가, 그대로 승인), `dirs`(사용자에게 직접 구현 대안과 함께 물어봐서 크레이트 사용으로 확정 — `dirs::config_dir()`이 `CONFIG_SPEC.md`의 3개 OS 경로와 정확히 일치).
+
+### 워크스페이스/크레이트 구조
+- 루트 `Cargo.toml`: `members = ["backend"]`만(src-tauri는 M6에서 추가).
+- `backend/Cargo.toml`: `axum`/`tokio`/`futures-core`가 전부 `optional = true` + `dev-server` feature로만 켜짐. `cargo build -p backend`(기본, feature 없이)로 이 세 개가 전혀 컴파일 안 되는 것 확인 — Tauri 릴리스 빌드가 이 lib에 의존해도 async 런타임을 안 끌고 온다는 뜻.
+- `backend/src/{file,watcher,config}.rs` + `bin/devserver.rs`(`required-features = ["dev-server"]`).
+
+### `watcher.rs`: 자체 구현 디바운스
+별도 디바운서 크레이트 없이 `std::thread` + `mpsc::channel`로 직접: 관련 이벤트가 오면 100ms 동안 추가 이벤트가 없을 때까지 계속 기다렸다가(`recv_timeout` 루프) 한 번만 콜백. 파일이 아니라 **부모 디렉토리를 감시**하고 `event.paths`에 정확한 대상 경로가 있는지로 필터링(에디터 write-replace 저장 패턴 대응). 통합 테스트로 "빠른 연속 쓰기 3번 → 콜백 1번" 확인, 3회 반복해서 flaky 여부 체크(안정적).
+
+### 버그 수정(사용자 리포트): 파일을 열기만 해도 화면이 계속 깜빡임
+원인: `event_affects()`가 경로만 확인하고 `event.kind`를 안 봤음 — `notify`의 `EventKind::Access`(파일/핸들 open/read/close, 내용 변경 없음)도 경로만 맞으면 그대로 콜백을 호출했다. 에디터가 파일을 **열기만** 해도(수정 안 해도) OS가 access 이벤트를 내고, 열려 있는 동안 계속 날 수도 있어서 "계속 깜빡이는" 증상으로 나타남. 수정: `event.kind.is_create() || event.kind.is_modify()`를 같이 확인해서 access 이벤트 무시. 합성 `Event`로 단위 테스트 추가 + 실제로 `cat`/`vim -c :q`(읽기만)로는 SSE 이벤트 안 오고 실제 수정(`echo >>`) 시에만 오는 것 재현 확인.
+
+### `config.rs`
+`#[serde(rename_all = "camelCase", default)]`를 구조체 전체에 붙여서 부분 JSON을 필드별 어노테이션 없이 처리(누락된 필드는 `Config::default()`에서 채워짐). `reset_config()`은 기존 파일을 `config.json.bak`로 복사(덮어쓰기, 히스토리 아님) 후 기본값 저장 — 실제로 실행해서 백업/복원 확인(테스트 후 `~/.config/LightMark`는 삭제해서 실제 환경 원복함).
+
+### `bin/devserver.rs`
+- `tower-http` 없이 `middleware::from_fn`으로 CORS 헤더 직접 처리(`Access-Control-Allow-Origin: http://localhost:5173` 고정) — 프론트 요청이 전부 커스텀 헤더 없는 "simple request"라 preflight 처리 불필요.
+- `/api/events?path=` — `docs/IPC_SPEC.md` 표에 없던 세부사항(쿼리 파라미터)을 구현하며 채움.
+- **"연결 종료 = unwatch"의 구현 방식**: `WatchStream` 구조체가 `mpsc::Receiver`와 `FileWatcher`를 같이 소유. 클라이언트가 끊으면 axum이 이 스트림을 drop → `FileWatcher`도 같이 drop되어 `notify` watcher가 실제로 멈춤. 별도 unwatch 로직 없이 Rust ownership으로 자연히 해결됨. `curl`로 SSE 연결 후 강제 종료해도 서버가 안 죽는 것으로 확인.
+- 모든 엔드포인트 `curl`로 직접 테스트: health(200), file(200 정상/404 없음), config get/reload/reset(+백업), SSE(느린 연속 쓰기 2번 → "changed" 이벤트 정확히 2번, 디바운스 정상 동작).
+
+### 프론트엔드 어댑터
+- **`platform/dev.ts`(신규)**: `IPC_SPEC.md` Dev Server 표에 `open_file` 행이 없다는 걸 근거로 `openFile()`은 미지원 처리 — 실제 파일은 `readFile(path)`로 열고, 그 경로는 main.ts가 `?file=` URL 쿼리 파라미터로 받음(브라우저엔 네이티브 열기 다이얼로그가 없어서). `openConfigFolder`/`openConfigFile`도 표대로 미지원.
+- **`createBackend()`가 비동기로 바뀜**: 헬스체크(`GET /api/health`, 300ms 타임아웃)로 Dev 모드 판별이 본질적으로 비동기라 `platform/backend.ts`의 팩토리를 `Promise<BackendApi>`로, `main.ts` 최상단에서 top-level `await`로 받음(`tsconfig` target ES2022라 바로 동작). Tauri 분기는 M6에서 추가, 지금은 Dev/Web만.
+- **Live reload 스크롤 앵커**: `lm-viewer.ts`에 `getActiveId()`/`scrollToHeading(id)` 공개 메서드 추가. `main.ts`의 `reloadFile()`이 재렌더 전 활성 heading을 저장했다가 재렌더 후 그 heading으로 되돌림.
+- 헤드리스 Chrome으로는 `createBackend()`가 Dev 모드를 정확히 감지하는 것(`{watch:true, configFile:false}`)까지만 콘솔 로그로 확인했고, `?file=` → 렌더까지의 전체 파이프라인 최종 DOM은 헤드리스 `--dump-dom`의 타이밍 한계로 캡처 못 했었음 — **이후 사용자가 실제 브라우저로 직접 열어서 정상 동작 확인함**(watcher의 access-event 버그를 리포트/재확인하는 과정에서 자연히 `?file=` 플로우 전체가 검증됨).
+
+### M3 Zoom 버튼 배선 — 정정
+M3 절에 "M5에서 Config System 붙으면 같이 처리한다"고 적어뒀었는데, M5에서도 배선 안 함 — Config **쓰기**(config.json 저장) 커맨드 자체가 없어서(`CLAUDE.md` "No graphical settings editor" 규칙, `read`/`reload`/`reset`만 존재) 아직 의미가 없음. `docs/PLAN.md`에 이 정정 반영해둠.
+
 ## 표준 작업 규칙 (이번 세션에서 재확인됨)
 - **git commit은 사용자가 직접 함.** 명시적으로 요청받지 않으면 절대 커밋하지 말 것.
-- 코드 변경 후 검증: `npm run lint && npm run typecheck && npm run build && npm run test` (frontend/ 기준). 문서(.md)만 변경한 경우는 해당 없음.
-- `docs/PLAN.md`의 Open Question 중 M2 관련(raw HTML 미사용)은 해결됨. M5의 `axum`/`dirs` 의존성 승인은 아직 미결.
+- 코드 변경 후 검증: 프론트 `npm run lint && npm run typecheck && npm run build && npm run test`, 백엔드 `cargo fmt --check && cargo clippy -p backend --all-features && cargo test -p backend`.
+- `docs/PLAN.md`의 Open Questions 둘 다 해결됨(M2 raw HTML, M5 axum/dirs).
+- 테스트하면서 실제 `~/.config/LightMark`에 파일이 생겼던 것 삭제해서 원복함 — devserver를 다시 띄워서 수동 테스트할 때 이 디렉토리가 다시 생기는 건 정상.
 
 ## 다음에 할 일 (사용자 지정 대기)
-M5(Rust 백엔드 + Dev 서버 + 어댑터)가 `docs/PLAN.md` 순서상 다음이지만, 아직 사용자의 명시적 지시는 없음 — 다음 세션은 사용자의 새 요청으로 시작해야 함. M5 착수 시 `axum`/`dirs` 의존성 승인이 먼저 필요(Open Questions #2), 그리고 M3에서 미룬 툴바 Zoom 버튼 배선도 M5에서 같이 처리하기로 확정돼 있음.
+M6(Tauri 통합 및 패키징)이 `docs/PLAN.md` 순서상 다음이지만, 아직 사용자의 명시적 지시는 없음. M6 착수 전 선행 확인 필요: 개발 환경에 `pkg-config`/webkit2gtk-4.1/libsoup 등 Tauri 시스템 의존성이 설치돼 있는지.
