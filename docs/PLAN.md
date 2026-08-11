@@ -125,9 +125,14 @@ export type Unwatch = () => void;
 
 **TOC/Breadcrumb는 DOM이 아니라 토큰에서 만든다.** `markdown.ts`가 `{ html, headings: Heading[] }`을 함께 반환 → `toc.ts`가 `Heading[]`을 트리로, `breadcrumb.ts`가 활성 heading id를 조상 경로로 변환. 순수 함수라 Vitest로 직접 검증 가능하고, 큰 문서에서 DOM 재순회를 피한다.
 
-활성 heading 추적은 `IntersectionObserver` 하나로 `lm-viewer`가 담당하고 `lm-toc`/`lm-breadcrumb`은 이벤트를 받아 하이라이트만 한다 (스크롤 핸들러 금지).
+**활성 heading 추적 (구현 후 확정된 설계)**: `lm-viewer`가 `IntersectionObserver`로 담당하고 `lm-toc`/`lm-breadcrumb`은 `lm-active-heading` 이벤트를 받아 하이라이트만 한다. 세부 구현은 계획보다 한 단계 더 정교해졌다 — 단순 "상단 N% 영역에 들어오면 활성" 방식은 실측 결과 어긋났다:
+- **root/밴드**: `root: this`(lm-viewer는 자체 스크롤 컨테이너이므로 window가 아니라 자기 자신 기준), `rootMargin: '0px 0px -98% 0px'`로 pane 상단에 얇은(2%) trip-wire를 둔다.
+- **enter만 신뢰**: heading이 trip-wire에 **진입(enter)**하는 순간만 활성 신호로 쓰고 **exit는 무시**한다. exit는 heading이 자기 줄 높이만큼 화면 위로 완전히 사라져야 발생해서, 이걸 근거로 다음 heading으로 넘기면 항상 늦게 전환된다.
+- **`scrollend` 보정**: 트랙패드 플링 등 아주 빠른 스크롤은 두 intersection 샘플 사이에 heading이 trip-wire를 통째로 건너뛸 수 있다. `lm-viewer`에 `scrollend`(스크롤 제스처당 1회, 프레임마다 도는 핸들러 아님) 리스너를 달아 이때만 실제 좌표(`getBoundingClientRect`)로 "top을 지난 마지막 heading"을 재계산해 보정한다. 이 보정은 첫 heading을 기본값으로 두어야 한다 — 문서 맨 위로 스크롤했을 때 어떤 heading도 "top을 지났다"는 조건을 만족하지 못하는 경우(padding 때문에 top이 정확히 0이 아님)를 이전 상태 유지가 아니라 첫 heading으로 되돌리기 위함.
 
-**검증**: `docs/PRD.md`를 열어 렌더/TOC 계층/스크롤 시 breadcrumb 갱신 확인. 10k줄 생성 문서에서 파싱+렌더 < 300ms (`performance.now()` 계측, `lm-statusbar`에 dev 전용 표시). Vitest로 toc/breadcrumb/slug 단위 테스트.
+**Breadcrumb는 고정 행이 아니라 Viewer 영역 상단의 토스트다 (UI 변경으로 확정).** 처음엔 항상 보이는 고정 높이 행(`#app` grid의 별도 row)으로 두었으나, 이후 "구분된 영역보다는 떠 있는 알림창 느낌"을 원하는 요구로 바꿨다: `#app` grid에서 breadcrumb 전용 row를 없애고, `lm-breadcrumb`를 `lm-viewer`와 함께 `.lm-viewer-pane`(`position: relative`) 안에 넣어 `position: absolute`로 얹었다. `lm-active-heading` 이벤트로 활성 heading이 바뀔 때만(`lm-viewer`가 동일 id 재호출을 이미 걸러내므로 매 이벤트가 실제 변경) 페이드인하고 1.5초 뒤 자동 페이드아웃한다(연속 변경 시 타이머 리셋). 폭 축약(전체 체인이 넘치면 `First > ... > Last`, 그래도 넘치면 First/Last 각각 CSS `text-overflow: ellipsis`) 로직은 그대로다. 축약 여부는 축소되지 않는 상태로 전체 체인을 렌더해 `scrollWidth`가 실제로 넘치는지 측정해서 판단(JS로 글자 수를 계산하지 않음)하고, 측정 기준은 Viewer 영역 폭(TOC는 침범하지 않음)이다. `ResizeObserver`로 폭 변화에 재계산한다.
+
+**검증**: `docs/PRD.md`를 열어 렌더/TOC 계층/스크롤 시 breadcrumb 갱신 확인. 10k줄 생성 문서에서 파싱+렌더 < 300ms (`performance.now()` 계측, `lm-statusbar`에 dev 전용 표시). Vitest로 toc/breadcrumb/slug 단위 테스트. 추가로: 느린/빠른 스크롤 양방향, 문서 맨 위/아래 경계, 좁은 폭에서 breadcrumb 축약을 수동 확인.
 
 ---
 

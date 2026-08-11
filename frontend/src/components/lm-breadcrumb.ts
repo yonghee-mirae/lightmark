@@ -1,6 +1,9 @@
 // Renders "Heading1 > Heading2 > Heading3" for the active heading, derived from the flat
 // heading list via core/breadcrumb.ts (pure function, no DOM traversal).
 //
+// Presented as a toast over the top of the rendering area rather than a permanently docked bar:
+// it fades in whenever the active heading changes and fades back out after a delay.
+//
 // Width handling: render the full chain first; if it overflows, collapse to
 // "First > ... > Last"; if even that overflows, the First/Last crumbs shrink and ellipsize via
 // CSS (docs/UI_SPEC.md). A ResizeObserver re-runs this when the pane itself is resized — no
@@ -9,10 +12,13 @@
 import { buildBreadcrumb } from '../core/breadcrumb';
 import type { Heading } from '../core/markdown';
 
+const VISIBLE_MS = 1500;
+
 export class LmBreadcrumb extends HTMLElement {
   private headings: Heading[] = [];
   private activeId: string | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private hideTimer: number | null = null;
 
   connectedCallback(): void {
     this.replaceChildren();
@@ -22,6 +28,7 @@ export class LmBreadcrumb extends HTMLElement {
 
   disconnectedCallback(): void {
     this.resizeObserver?.disconnect();
+    this.clearHideTimer();
   }
 
   setHeadings(headings: Heading[]): void {
@@ -33,6 +40,25 @@ export class LmBreadcrumb extends HTMLElement {
   setActive(id: string | null): void {
     this.activeId = id;
     this.render();
+    if (id) {
+      this.show();
+    }
+  }
+
+  private show(): void {
+    this.classList.add('lm-breadcrumb-visible');
+    this.clearHideTimer();
+    this.hideTimer = setTimeout(() => {
+      this.classList.remove('lm-breadcrumb-visible');
+      this.hideTimer = null;
+    }, VISIBLE_MS);
+  }
+
+  private clearHideTimer(): void {
+    if (this.hideTimer !== null) {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
   }
 
   private render(): void {

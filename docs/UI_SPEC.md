@@ -3,7 +3,6 @@
 ## Layout
 ```text
 Toolbar
-Breadcrumb
 Content Area (TOC + Viewer)
 Status Bar
 ```
@@ -19,6 +18,13 @@ Resizable
 
 ## Breadcrumb
 Heading1 > Heading2 > Heading3
+
+고정 행이 아니라 Viewer 영역 상단에 떠 있는 토스트. 활성 heading이 바뀔 때만 나타났다가 1.5초 뒤 자동으로 사라짐 (연속으로 바뀌면 타이머 리셋). TOC 영역은 침범하지 않음 (Viewer 폭 기준으로만 오버레이).
+
+폭이 부족하면 단계적으로 축약:
+1. 전체 체인 표시
+2. 넘치면 첫 heading과 마지막 heading만 표시하고 중간은 `...`로 축약: `First > ... > Last`
+3. 그래도 넘치면 First/Last 각각을 말줄임표로 축약: `First... > ... > ...Last`
 
 ## Viewer
 Rendered Markdown Only

@@ -17,6 +17,7 @@
 - jQuery
 - Global state libraries
 - Direct Tauri imports outside platform layer (ESLint no-restricted-imports로 강제)
+- 프레임마다 실행되는 scroll 핸들러로 레이아웃 재계산 (IntersectionObserver/ResizeObserver로 대체. `scrollend`는 스크롤 제스처 종료 시 1회 보정 용도로만 예외 허용 — 상세: `docs/PLAN.md` M2)
 
 ## Code Style
 - Small modules

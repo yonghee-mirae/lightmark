@@ -27,7 +27,7 @@ CommonMark + GFM
 좌측 패널, 접기/펼치기, 현재 섹션 강조
 
 ### Breadcrumb
-Toolbar 아래 현재 위치 표시
+Viewer 영역 상단에 떠 있는 토스트로 현재 위치 표시 (활성 heading 변경 시에만 잠깐 나타남)
 
 ### Theme
 기본 테마 + 사용자 CSS
