@@ -195,7 +195,7 @@ Config의 `mermaid`/`katex`/`syntaxHighlight`가 false면 import 자체를 하�
 
 ## Open Questions (해당 마일스톤 착수 시점에 결정)
 
-1. **M2 — raw HTML 허용 여부**: `html: false`로 시작하되, `<details>`/`<br>` 등을 쓰는 문서가 깨진다. 허용하려면 sanitize가 필요하고 의존성이 하나 늘어난다. 실제 문서를 열어보고 판단.
+1. **[해결됨] M2 — raw HTML 허용 여부**: `html: false`로 확정. `docs/*.md`를 grep한 결과 raw HTML은 전부 인라인 코드/코드블록 안에서만 등장(`<input type=file>`, `<span class="lm-math">` 등은 문서화 예시일 뿐)해서 실제로 깨지는 문서가 없다. sanitizer 의존성을 추가할 이유가 없으므로 보류.
 2. **M5 — `axum`, `dirs` 의존성 승인**: `axum`은 dev 전용 feature라 배포 바이너리 미포함. `dirs`는 3개 OS 경로 분기를 직접 짜면 없앨 수 있다(~30줄).
 
 ---

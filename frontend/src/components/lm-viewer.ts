@@ -1,27 +1,127 @@
-// M1: displays raw text only and accepts drag & drop. Markdown rendering lands in M2.
+// Renders parsed markdown and tracks the active heading via IntersectionObserver so lm-toc/
+// lm-breadcrumb can highlight without running their own scroll handlers. A 'scrollend'
+// reconciliation (see reconcileActiveHeading) covers the one case IntersectionObserver alone
+// can miss: fast scrolling skipping past the trip wire entirely between two samples.
+
+import type { Heading } from '../core/markdown';
 
 export interface FileDropDetail {
   name: string;
   content: string;
 }
 
+export interface ActiveHeadingDetail {
+  id: string;
+}
+
 export class LmViewer extends HTMLElement {
+  private observer: IntersectionObserver | null = null;
+  private activeId: string | null = null;
+
   connectedCallback(): void {
     this.renderEmpty();
     this.addEventListener('dragover', this.handleDragOver);
     this.addEventListener('drop', this.handleDrop);
+    this.addEventListener('scrollend', this.reconcileActiveHeading);
   }
 
-  setRawContent(content: string): void {
-    this.textContent = '';
-    const pre = document.createElement('pre');
-    pre.className = 'lm-raw';
-    pre.textContent = content;
-    this.appendChild(pre);
+  disconnectedCallback(): void {
+    this.observer?.disconnect();
+    this.removeEventListener('scrollend', this.reconcileActiveHeading);
+  }
+
+  setContent(html: string, headings: Heading[]): void {
+    this.observer?.disconnect();
+    this.activeId = null;
+    this.replaceChildren();
+
+    const article = document.createElement('div');
+    article.className = 'lm-markdown';
+    article.innerHTML = html;
+    this.appendChild(article);
+
+    this.observeHeadings();
+    const first = headings[0];
+    if (first) {
+      this.setActive(first.id);
+    }
   }
 
   private renderEmpty(): void {
     this.innerHTML = '<p class="lm-empty">Drop a Markdown file here, or use Open.</p>';
+  }
+
+  private observeHeadings(): void {
+    const headingEls = this.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6');
+    if (headingEls.length === 0) {
+      return;
+    }
+    // `root: this`: lm-viewer scrolls internally (overflow-y: auto), so the trigger line must be
+    // relative to this pane, not the window. The band is a thin trip wire pinned to the pane's
+    // top edge (2% of its height, a few px in practice) rather than a wide "top zone": a heading
+    // becomes active the moment it crosses that line and stays active — even once fully scrolled
+    // past — until the *next* heading crosses the same line. That's why only entries that just
+    // started intersecting matter below; an exit event just means "this heading left the trip
+    // wire", which happens a full line-height *after* it crosses the top and would make the
+    // switch to the next heading lag behind by that much if we acted on it.
+    this.observer = new IntersectionObserver(this.handleIntersect, {
+      root: this,
+      rootMargin: '0px 0px -98% 0px',
+      threshold: 0,
+    });
+    headingEls.forEach((el) => this.observer?.observe(el));
+  }
+
+  private handleIntersect = (entries: IntersectionObserverEntry[]): void => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) {
+        continue;
+      }
+      const id = (entry.target as HTMLElement).id;
+      if (id) {
+        this.setActive(id);
+      }
+    }
+  };
+
+  // Fallback for fast scrolling: a fling can move the content far enough in a single frame that
+  // a heading's line crosses the thin trip wire above between two intersection samples, so its
+  // 'enter' never fires and the active heading falls behind. `scrollend` fires once per scroll
+  // gesture (not per frame), so reconciling here catches up without becoming a per-frame handler.
+  private reconcileActiveHeading = (): void => {
+    const headingEls = this.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6');
+    const firstHeading = headingEls[0];
+    if (!firstHeading) {
+      return;
+    }
+    // Default to the first heading: if none has passed the top (e.g. scrolled all the way back
+    // to the very start of the document, where the first heading sits just below the top edge
+    // because of lm-viewer's own padding), that's the correct answer, not "leave it as-is".
+    const paneTop = this.getBoundingClientRect().top;
+    let active = firstHeading;
+    for (const el of headingEls) {
+      if (el.getBoundingClientRect().top - paneTop <= 0) {
+        active = el;
+      } else {
+        break;
+      }
+    }
+    if (active.id) {
+      this.setActive(active.id);
+    }
+  };
+
+  private setActive(id: string): void {
+    if (id === this.activeId) {
+      return;
+    }
+    this.activeId = id;
+    this.dispatchEvent(
+      new CustomEvent<ActiveHeadingDetail>('lm-active-heading', {
+        bubbles: true,
+        detail: { id },
+      }),
+    );
   }
 
   private handleDragOver = (event: DragEvent): void => {

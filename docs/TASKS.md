@@ -7,9 +7,9 @@
 - [x] Setup Vitest
 
 ## Milestone 2
-- [ ] Markdown Renderer
-- [ ] TOC Engine
-- [ ] Breadcrumb Engine
+- [x] Markdown Renderer
+- [x] TOC Engine
+- [x] Breadcrumb Engine
 
 ## Milestone 3
 - [ ] Theme Engine

@@ -49,12 +49,100 @@ lm-viewer {
   padding: 1rem;
 }
 
-.lm-raw {
+.lm-empty {
+  color: var(--lm-color-border);
+}
+
+/* Breadcrumb */
+lm-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 1.25rem;
+  overflow: hidden;
+}
+
+/* Full-chain render (used for the fits-or-not measurement, and kept as-is when it fits): items
+   stay at their natural width so overflow is real, not hidden by an early shrink. */
+.lm-breadcrumb-item {
+  white-space: nowrap;
+}
+
+/* Collapsed render's First/Last crumbs: allowed to shrink and ellipsize as a last resort. */
+.lm-breadcrumb-item.lm-truncatable {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-breadcrumb-sep,
+.lm-breadcrumb-ellipsis {
+  flex-shrink: 0;
+  color: var(--lm-color-border);
+}
+
+/* TOC */
+lm-toc ul {
+  list-style: none;
   margin: 0;
-  white-space: pre-wrap;
+  padding-left: 0.75rem;
+}
+
+lm-toc > ul {
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+}
+
+lm-toc a {
+  display: block;
+  padding: 0.15rem 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+lm-toc a.active {
+  color: var(--lm-color-accent);
+  font-weight: 600;
+}
+
+/* Rendered markdown */
+.lm-markdown {
+  max-width: 860px;
+  line-height: 1.6;
+}
+
+.lm-markdown pre {
+  overflow-x: auto;
+  padding: 0.75rem 1rem;
+  background: var(--lm-color-border);
+  border-radius: 4px;
+}
+
+.lm-markdown code {
   font-family: var(--lm-font-code);
 }
 
-.lm-empty {
-  color: var(--lm-color-border);
+.lm-markdown table {
+  border-collapse: collapse;
+}
+
+.lm-markdown th,
+.lm-markdown td {
+  border: 1px solid var(--lm-color-border);
+  padding: 0.35rem 0.6rem;
+}
+
+.lm-markdown blockquote {
+  margin-left: 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--lm-color-border);
+  color: var(--lm-color-fg);
+}
+
+.lm-math {
+  font-family: var(--lm-font-code);
+}
+
+.lm-math-block {
+  display: block;
+  padding: 0.25rem 0;
 }
