@@ -37,7 +37,12 @@ pub fn watch_file<F>(path: &Path, mut on_change: F) -> notify::Result<FileWatche
 where
     F: FnMut() + Send + 'static,
 {
-    let target: PathBuf = path.to_path_buf();
+    // Canonicalize so the comparison in `event_affects` matches what the platform's watcher
+    // backend actually reports. On macOS, FSEvents resolves symlinks in reported paths (e.g.
+    // `/var/...` comes back as `/private/var/...`), so comparing against the caller's literal
+    // path can silently never match. Falls back to the literal path if canonicalization fails
+    // (e.g. the file was removed between open and watch setup) rather than erroring out.
+    let target: PathBuf = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let parent = target
         .parent()
         .map(Path::to_path_buf)

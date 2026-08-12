@@ -14,12 +14,10 @@ Linux: ~/.config/LightMark/config.json
   "codeFontFamily":"monospace",
   "zoom":100,
   "tocVisible":false,
-  "breadcrumbVisible":true,
   "syntaxHighlight":true,
   "mermaid":true,
   "mermaidTheme":"auto",
   "katex":true,
-  "autoReload":true,
   "printUseLightTheme":true
 }
 ```

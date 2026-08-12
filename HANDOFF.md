@@ -9,11 +9,12 @@
 - **M3 (Theme Engine / Custom CSS / Font Loader)**: 완료. 아래 "M3 구현 상세" 참고.
 - **M4 (Mermaid / KaTeX / Shiki 지연 로딩)**: 완료. 아래 "M4 구현 상세" 참고.
 - **M5 (Rust 백엔드 + Dev 서버 + 어댑터)**: 완료. 아래 "M5 구현 상세" 참고.
-- **M6 (Tauri 통합)**: **완료, 전체 검증 완료**(+사용자 리포트로 버그 2건 수정: Open 버튼 데드락, Tauri drag&drop). 아래 "M6 구현 상세" 참고. Packaging/Release는 원래 M6에 있었으나 **M8로 분리**(사용자 요청 — 통합과 배포는 성격이 달라서, 배포는 맨 마지막 마일스톤으로). 사용자가 실제 Tauri 앱에서 직접 확인 완료: live reload, Config 4개 버튼(Config Folder/File 열기, Reload/Reset Config), Open 다이얼로그 마지막 위치 기억, CLI 인자로 파일 열기, single-instance 라우팅.
+- **M6 (Tauri 통합)**: **완료, 전체 검증 완료**(+사용자 리포트로 버그 2건 수정: Open 버튼 데드락, Tauri drag&drop). 아래 "M6 구현 상세" 참고. Packaging/Release는 원래 M6에 있었으나 **M8로 분리**(사용자 요청 — 통합과 배포는 성격이 달라서, 배포는 맨 마지막 마일스톤으로). 사용자가 실제 Tauri 앱에서 직접 확인 완료: live reload, Config 4개 버튼(Config Folder/File 열기, Reload/Reset Config), Open 다이얼로그 마지막 위치 기억, CLI 인자로 파일 열기, single-instance 라우팅. **macOS 전환 세션에서 Print 버튼도 실기로 문제 발견/수정/재확인 완료**(아래 "macOS 전환 세션" 참고) — `RunEvent::Opened`(dock 드롭/파일 연결)는 여전히 미검증.
 - **M7 (TOC Toggle / Zoom / About)**: **TOC Toggle, About 구현 완료.** TOC Toggle은 사용자가 실제 브라우저에서 클릭해 정상 동작 확인("toc toggle 버튼이 잘 동작하는 건 확인했어"). About은 사용자가 실제로 열어보며 버그(Close 버튼 제거 후 의도치 않은 outline)를 리포트/수정까지 마쳤고 그 뒤 이어서 다른 요청(버튼 라벨/Config File·Reset 삭제 등)으로 넘어감 — 즉 실사용 중이지만 최종 상태에 대한 별도의 "정상 동작" 재확인 문구는 없음. 이후 버튼 디자인 전면 개편, 라벨 한 단어화, Config File/Reset Config 기능 삭제(+Reload가 자기 치유), `Reload Config`→`Apply` 라벨, 툴바 높이 축소까지 전부 사용자가 최종 확인("좋아. 모두 좋아."/"ok. 모두 좋아."). Zoom은 미착수. 아래 "M7 구현 상세"/"다음에 할 일" 참고.
-- **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리), 미착수. AppImage 패키징(`patchelf`/`libfuse2t64` 미설치), 릴리스 빌드 성능 실측(<1s, <30MB), macOS `RunEvent::Opened` 실기 검증 등.
+- **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리), 미착수. macOS 전환으로 계획이 Linux 전제(AppImage/`patchelf`/`libfuse2t64`)에서 벗어남 — macOS는 `.app`/`.dmg` 타깃이라 착수 시 범위를 다시 잡아야 함. 릴리스 빌드 성능 실측(<1s, <30MB)도 미착수.
+- **macOS 전환 세션 (2026-08-12)**: 개발 환경을 Ubuntu에서 macOS로 이전. 빌드/테스트 자체는 시스템 패키지 설치 없이 전부 통과했지만, 그 과정에서 macOS 전용 버그 2건(watcher의 FSEvents 경로 불일치, Print 버튼의 Tauri ACL 권한 누락)을 발견/수정하고 사용자가 Print는 실기로 재확인함. 그 외 사용자 요청으로 config 자기 치유 범위 확장, 구현 안 된 채로 스키마에만 남아있던 config 필드 2개(`autoReload`, `breadcrumbVisible`) 삭제, 상태바 레이아웃 조정, Apply 버튼 no-op 최적화까지 진행. 아래 "macOS 전환 세션 구현 상세" 참고.
 
-다음 세션은 사용자의 새 지시를 기다리는 상태에서 시작 — M7 나머지(Zoom), M8 중 어느 걸 먼저 할지가 다음 화두.
+다음 세션은 사용자의 새 지시를 기다리는 상태에서 시작 — M7 나머지(Zoom), M8(이번엔 macOS 기준으로 범위 재검토 필요), `RunEvent::Opened` 실기 검증 중 어느 걸 먼저 할지가 다음 화두.
 
 ## M2 구현 상세
 
@@ -277,7 +278,49 @@ md 파일 위치 기준으로 resolve하는 게 의미상 맞지만(Web은 브�
 - **개선(사용자 요청): 기본 창 크기를 4:3 비율로.** 기존 `width: 1000, height: 700`(M6에서 800x600 → 1000x700으로 수동 조정했던 값, 4:3이 아니었음)을 `960x720`으로 변경 — `minWidth`/`minHeight`(현재 640x480)와 같은 4:3 비율 유지, 여전히 그보다 크므로 충돌 없음.
 - Tauri 전용 설정이라 Web/Dev 모드는 영향 없음(브라우저 탭/창 크기는 OS·브라우저가 관리, 앱이 제어할 수 있는 영역이 아님). `cargo check -p app`으로 스키마 유효성 확인.
 
+## macOS 전환 세션 구현 상세
+
+Ubuntu에서 개발하던 걸 macOS로 이어받은 세션. 개발 도구(Xcode CLT/Rust/Node/Homebrew)는 이미 설치돼 있었고, `pkg-config`만 없었지만 이번 빌드 전체에서 실제로 필요하지 않았음(webkit2gtk 등 Linux 전용 시스템 패키지 자체가 macOS엔 불필요 — WKWebView 네이티브 사용). `cargo build/test/fmt/clippy -p backend`/`-p app`, 프론트 `lint`/`typecheck`/`build`/`test`, `npm run tauri dev` 실기 기동까지 전부 시스템 패키지 설치 없이 바로 통과 — 그 과정에서 아래 macOS 전용 버그 2건을 발견.
+
+### 버그 수정(macOS 전용): watcher가 FSEvents 경로 불일치로 콜백을 아예 못 받음
+`backend/src/watcher.rs`의 `event_affects()`가 감시 대상 경로를 문자열 완전일치(`==`)로 비교하는데, macOS의 FSEvents 백엔드는 이벤트 경로를 심볼릭 링크가 해석(canonicalize)된 형태로 돌려준다(예: `/var/...`로 감시를 걸어도 이벤트는 `/private/var/...`로 옴 — `/var`가 `/private/var`의 심링크). Linux(inotify)는 이런 변환이 없어서 이 문제 자체가 존재하지 않았음. `notify` 크레이트로 직접 프로브를 만들어 확인: `target = "/var/folders/.../doc.md"`로 감시했는데 실제 이벤트는 `paths=["/private/var/folders/.../doc.md"]`로 옴. 기존 테스트(`fires_once_for_a_burst_of_writes_to_the_watched_file`)가 정확히 이 케이스(`std::env::temp_dir()`가 `/var/folders/...`를 반환)를 잡아내 macOS에서 실패했음.
+
+**실사용 영향**: 사용자 문서가 `~/Documents/...`처럼 심링크 없는 경로면 문제없지만, `/tmp` 하위나 iCloud Drive(`~/Library/Mobile Documents/...`) 등 심링크를 거치는 위치의 파일은 macOS에서 live reload가 조용히 안 동작할 수 있었음.
+
+수정: `watch_file()`에서 `target`을 `path.canonicalize()`로 정규화(실패 시 원본 경로로 폴백)해서 비교 기준을 FSEvents가 실제로 돌려주는 형태와 맞춤 — Linux에서도 무해(이미 정규 경로라 canonicalize가 그대로 반환). 수정 후 `cargo test -p backend` 13개 전부 통과.
+
+### 버그 수정(macOS 전용, 사용자 리포트): Print 버튼이 Ubuntu에선 됐는데 macOS에서 아무 반응 없음
+`toolbar`의 Print 버튼은 `main.ts`에서 그냥 `window.print()`를 호출하는데, 이게 플랫폼마다 다르게 처리됨:
+- Linux(WebKitGTK): `window.print()`를 엔진이 자체적으로 네이티브 브라우저 API로 처리 — Tauri의 IPC/권한(ACL) 체계를 거치지 않음. 그래서 Ubuntu에서는 항상 됐음.
+- macOS(WKWebView): WKWebView가 `window.print()`를 네이티브로 지원하지 않아서, wry/Tauri가 대신 내부 `print` 커맨드로 처리해줌. 이 커맨드는 `core:webview:allow-print` 권한이 명시적으로 있어야 동작 — 없으면 권한 거부로 콘솔에만 경고가 뜨고 화면엔 아무 반응이 없음(정확히 사용자가 본 증상).
+
+`src-tauri/capabilities/default.json`의 `permissions`에 `core:default`/`dialog:allow-open`/`opener:allow-open-path`만 있고 `core:webview:allow-print`가 빠져 있었던 게 원인 — `core:default`가 끌고 오는 `core:webview:default`엔 `allow-get-all-webviews`/`allow-webview-position`/`allow-webview-size`/`allow-internal-toggle-devtools`만 있고 `allow-print`는 포함 안 됨(`src-tauri/gen/schemas/acl-manifests.json`으로 직접 확인).
+
+수정: `capabilities/default.json`의 `permissions`에 `"core:webview:allow-print"` 추가. `cargo build -p app`으로 권한 식별자 자체가 유효함(빌드 스크립트가 파싱 성공)을 확인, **사용자가 실제 macOS Tauri 앱에서 Print 버튼을 눌러보고 정상 동작 확인**.
+
+### 개선(사용자 요청): config.json이 없으면 앱 시작 시에도 자기 치유
+기존엔 `read_config()`(앱 시작 시 1회 호출)가 순수 읽기 전용 `backend::load_config()`를 써서, config.json이 없어도 메모리 기본값만 쓰고 디스크에는 아무것도 안 썼음 — 자기 치유(디스크에 기본값을 실제로 쓰기)는 M7에서 신설된 `reload_config()`(Apply 버튼)를 눌러야만 일어났음. 사용자가 "앱이 실행될 때는 항상 config file 존재를 확인해서 없으면 기본값으로 생성"하길 원함 — 단, Apply 버튼의 기존 동작(앱을 실행한 채로 config.json을 삭제하고 Apply를 누르면 재생성)은 그대로 유지하고 싶어함.
+
+수정: `read_config()` Tauri 커맨드와 devserver의 `GET /api/config` 핸들러가 이제 둘 다 `backend::load_config()` 대신 `backend::reload_config()`를 호출 — 앱 시작(Tauri)/서버 요청(Dev) 시점과 Apply 클릭 시점이 동일한 자기 치유 로직을 공유. 순수 읽기 전용이던 `backend::load_config()`는 이 변경으로 외부 호출자가 없어져 삭제(`backend/src/lib.rs`의 re-export도 정리). `docs/IPC_SPEC.md`의 "읽기는 부작용 없음" 문구를 새 동작에 맞게 수정. 실기 확인: `config.json` 삭제 후 `npm run tauri dev`로 앱을 켜자 즉시 기본값으로 파일이 재생성되는 것 확인.
+
+### 정리(사용자 요청): 스키마에만 있고 실제로 구현되지 않은 config 필드 2개 삭제
+사용자가 `autoReload: false`로 설정하고 Apply를 눌러도 상태바가 계속 "On"으로 남고 live reload가 계속 동작하는 걸 리포트 — 조사해보니 `autoReload` 필드는 `backend/src/config.rs`/`frontend/src/types/config.ts`/`docs/CONFIG_SPEC.md`에 스키마로만 존재하고, 실제 watch 로직(`main.ts`의 `watchPath()`)이나 상태바 표시(`lm-statusbar.ts`)는 이 필드를 전혀 참조하지 않았음 — 애초에 구현이 빠진 채로 스키마만 남아있던 phantom 필드. 켜고 끄는 토글 기능을 새로 만드는 대신, 사용자가 "이 기능은 굳이 필요 없다"고 판단해 **필드 자체를 삭제**하기로 결정. 상태바의 "Auto Reload: On/N/A" 표시도 같이 삭제(`lm-statusbar.ts`) — 이 표시를 구동하던 `capabilities` prop/`setCapabilities()`/`StatusbarCapabilities` 인터페이스도 이 표시 하나만을 위한 것이어서 같이 정리(orphan 제거), `main.ts`의 `statusbar.setCapabilities(...)` 호출도 제거.
+
+이 발견을 계기로 나머지 config 필드 전체를 실제 사용처 기준으로 재점검(`grep`으로 스키마 정의 파일 밖에서 각 필드가 실제로 읽히는지 확인) — **`breadcrumbVisible`도 완전히 같은 상황**(어디에도 실제 참조가 없음)이라 확인, 같은 방식으로 삭제 확정. breadcrumb 표시/숨김은 원래부터(그리고 지금도) 활성 heading 유무로만 결정되는 게 맞는 설계라 이 필드가 관여할 자리가 없었음.
+
+두 필드 모두 `backend/src/config.rs`(struct 필드 + `Default` impl)/`frontend/src/types/config.ts`(interface + `DEFAULT_CONFIG`)/`frontend/src/types/config.test.ts`/`docs/CONFIG_SPEC.md`에서 제거. `docs/UI_SPEC.md`(StatusBar 필드 목록)/`docs/PLAN.md`(capabilities 기반 UI 분기 설명의 예시 문구)도 Auto Reload 표시 삭제에 맞춰 수정. 남은 필드(`theme`/`customCss`/`fontFamily`/`codeFontFamily`/`zoom`/`tocVisible`/`syntaxHighlight`/`mermaid`/`mermaidTheme`/`katex`/`printUseLightTheme`)는 전부 실제 사용처 확인됨 — `zoom`은 값 자체는 CSS 변수로 정상 적용되지만 툴바 조절 버튼이 없는 상태인데, 이건 `TASKS.md`에 이미 "M7 Zoom 미착수"로 추적 중인 별개 항목이라 phantom 필드는 아님.
+
+### 개선(사용자 요청): 상태바 레이아웃 — zoom을 오른쪽 정렬로
+"파일명, 렌더링 시간은 그대로 왼쪽에 두고, 확대 배율을 오른쪽 정렬로 옮겨줘." `lm-statusbar.ts`의 마크업 순서를 `filename → render time(dev-only) → zoom`으로 바꾸고, `layout.css`에 `.lm-status-zoom { margin-left: auto; }` 추가해 zoom만 flex 컨테이너 오른쪽 끝으로 밀어냄(나머지는 기존 `gap`으로 왼쪽에 자연스럽게 붙음).
+
+### 개선(사용자 요청): Apply를 눌러도 config가 안 바뀌었으면 아무 동작도 안 하도록
+"config file 변경없이 apply 버튼을 누르면 아무런 동작을 하지 않아야 하는데 rendering 시간이 계속 갱신되고 있어." 기존 `lm-reload-config` 핸들러는 `backend.reloadConfig()` 결과를 받으면 값이 실제로 바뀌었는지 확인 안 하고 무조건 `applyTheme()` + `rerenderCurrentDocument()`(재렌더 → 렌더링 시간도 매번 갱신)를 호출했음. `frontend/src/types/config.ts`에 순수 함수 `configsEqual(a, b)` 추가(Config는 중첩 없는 평평한 원시값 객체라 필드별 `===` 비교로 완전한 동등성 체크) — `main.ts`의 핸들러가 새 config와 현재 `currentConfig`가 동일하면 그대로 `return`, 실제로 값이 바뀐 경우에만 재렌더링. `config.test.ts`에 동일/필드 하나만 다른 경우 테스트 추가.
+
+### 참고: 화면 캡처를 통한 시각적 검증은 더 이상 하지 않음
+사용자가 "앞으로 확인은 내가 직접 할거니까 화면을 캡쳐해 검증하는 단계는 하지 마"라고 명시 — 이후로는 UI 변경도 lint/typecheck/build/test 같은 코드 레벨 검증까지만 하고 화면 캡처(Playwright/chromium-cli 등)로 직접 눈으로 확인하는 단계는 생략, 사용자가 직접 확인.
+
 ## 다음에 할 일 (사용자 지정 대기)
 - **M7 나머지(Zoom) 미착수**: 범위/설계는 `docs/PLAN.md` M7 절 참고(config.json에 안 쓰고 세션 동안만 유지). TOC Toggle/About을 포함한 M7의 나머지 전부는 사용자 확인 완료(위 "진행 상황" M7 줄 참고) — Zoom만 남음.
-- **M8(신규, 아직 미착수, M6에서 분리)**: 패키징/배포. 원래 M6에 같이 있었는데, "통합은 끝났고 배포는 성격이 다르니 마지막 마일스톤으로 분리"하자는 사용자 요청으로 M6과 분리 확정. `patchelf`/`libfuse2t64` 설치 후 `npm run tauri build`로 AppImage 등 패키징(필요하면 `tauri.conf.json`의 `bundle.targets`로 범위 조정), 릴리스 빌드로 시작 시간/메모리 실측, macOS `RunEvent::Opened` 실기 검증까지 포함.
-- M7 나머지(Zoom)와 M8 중 어느 걸 먼저 할지는 아직 사용자 지정 안 됨.
+- **`RunEvent::Opened`(macOS dock 드롭/파일 연결) 실기 검증 미착수**: M6에서 구현은 됐지만 그때는 Linux 환경이라 확인 못 했던 항목. 이제 macOS라 검증 가능한 상태 — Print 버튼(macOS 전용 버그였음, 위 "macOS 전환 세션" 참고)처럼 실제로 문제가 있을 수 있음.
+- **M8(신규, 아직 미착수, M6에서 분리) — macOS 기준으로 범위 재검토 필요**: 기존 계획(`patchelf`/`libfuse2t64` 설치 후 AppImage 패키징)은 전부 Linux 전제라 macOS 전환으로 그대로 못 씀 — macOS는 `npm run tauri build`의 `bundle.targets`가 `.app`/`.dmg`로 나가는 게 기본이라 별도 패키지 설치 자체가 필요 없을 가능성이 높지만 실제로 시도해본 적은 없음. 릴리스 빌드로 시작 시간/메모리 실측(<1s, <30MB, `CLAUDE.md` 목표)도 미착수. 코드 서명/공지사항(notarization) 등 macOS 배포 특유의 절차도 착수 시점에 새로 확인 필요.
+- M7 나머지(Zoom), `RunEvent::Opened` 검증, M8 중 어느 걸 먼저 할지는 아직 사용자 지정 안 됨.

@@ -63,12 +63,17 @@ async fn get_file(Query(q): Query<PathQuery>) -> Response {
 }
 
 async fn get_config() -> Json<backend::Config> {
-    Json(backend::load_config())
+    // Self-heals a missing/broken config.json by writing a fresh default one to disk - see
+    // backend::reload_config(). Runs on every dev server start, not just when the user clicks
+    // Apply.
+    Json(backend::reload_config())
 }
 
 async fn post_config_reload() -> Json<backend::Config> {
-    // Unlike get_config(), self-heals a missing/broken config.json by writing a fresh default one
-    // to disk - see backend::reload_config() (M7: replaces the removed Reset Config route).
+    // Same self-healing backend::reload_config() as get_config() above, just triggered by the
+    // user clicking Apply instead of dev server start (M7: replaces the removed Reset Config
+    // route - deleting config.json while the server is running and clicking Apply gets a clean
+    // default file back without restarting).
     Json(backend::reload_config())
 }
 

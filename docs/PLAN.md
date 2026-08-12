@@ -16,7 +16,7 @@
 
 | 모드 | 실행 | BackendApi | 파일 읽기 | Live Reload |
 |---|---|---|---|---|
-| Web | `npm run dev` | `WebBackend` | `<input type=file>` / drop | 미지원 (`Auto Reload: N/A`) |
+| Web | `npm run dev` | `WebBackend` | `<input type=file>` / drop | 미지원 |
 | Dev | `cargo run -p backend` + `npm run dev` | `DevBackend` | `GET /api/file?path=` | SSE `/api/events` |
 | Tauri | `npm run tauri dev` / 배포 | `TauriBackend` | `invoke("read_file")` | `file-changed` 이벤트 |
 
@@ -97,7 +97,7 @@ export type Unwatch = () => void;
 
 (M7에서 `openConfigFile()`/`resetConfig()`는 삭제됨 — 위 계약은 M6 당시가 아니라 현재 기준. M7 절 참고.)
 
-`capabilities`가 UI 분기의 단일 근거다 — `lm-statusbar`는 `capabilities.watch`가 false면 `Auto Reload: N/A`, `lm-toolbar`는 `capabilities.configFile`이 false면 Config 버튼을 숨긴다. 컴포넌트가 실행 모드를 직접 묻는 코드를 두지 않는다.
+`capabilities`가 UI 분기의 단일 근거다 — `lm-toolbar`는 `capabilities.configFile`이 false면 Config 버튼을 숨긴다. 컴포넌트가 실행 모드를 직접 묻는 코드를 두지 않는다. (`capabilities.watch`는 UI에 표시되지 않고 `main.ts`가 live reload를 배선할지만 내부적으로 결정한다 — `autoReload` config 필드는 별도 토글 기능 없이 사용자 요청으로 제거됨, 아래 참고.)
 
 `watchFile`이 콜백+unwatch 핸들을 반환하므로 `unwatch_file`은 프론트 API 표면에서 사라지고 어댑터 내부 구현으로 들어간다.
 

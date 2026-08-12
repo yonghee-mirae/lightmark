@@ -7,13 +7,18 @@ export interface Config {
   codeFontFamily: string;
   zoom: number;
   tocVisible: boolean;
-  breadcrumbVisible: boolean;
   syntaxHighlight: boolean;
   mermaid: boolean;
   mermaidTheme: string;
   katex: boolean;
-  autoReload: boolean;
   printUseLightTheme: boolean;
+}
+
+// Config is a flat object of primitives (no nested objects/arrays), so a field-by-field ===
+// comparison is a complete equality check - used by main.ts's Apply handler to skip re-rendering
+// when reloadConfig() comes back identical to what's already applied.
+export function configsEqual(a: Config, b: Config): boolean {
+  return (Object.keys(a) as (keyof Config)[]).every((key) => a[key] === b[key]);
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -23,11 +28,9 @@ export const DEFAULT_CONFIG: Config = {
   codeFontFamily: 'monospace',
   zoom: 100,
   tocVisible: false,
-  breadcrumbVisible: true,
   syntaxHighlight: true,
   mermaid: true,
   mermaidTheme: 'auto',
   katex: true,
-  autoReload: true,
   printUseLightTheme: true,
 };

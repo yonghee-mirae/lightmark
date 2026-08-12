@@ -15,12 +15,10 @@ pub struct Config {
     pub code_font_family: String,
     pub zoom: u32,
     pub toc_visible: bool,
-    pub breadcrumb_visible: bool,
     pub syntax_highlight: bool,
     pub mermaid: bool,
     pub mermaid_theme: String,
     pub katex: bool,
-    pub auto_reload: bool,
     pub print_use_light_theme: bool,
 }
 
@@ -33,12 +31,10 @@ impl Default for Config {
             code_font_family: "monospace".to_string(),
             zoom: 100,
             toc_visible: false,
-            breadcrumb_visible: true,
             syntax_highlight: true,
             mermaid: true,
             mermaid_theme: "auto".to_string(),
             katex: true,
-            auto_reload: true,
             print_use_light_theme: true,
         }
     }
@@ -60,21 +56,14 @@ fn try_load(path: &Path) -> Option<Config> {
 }
 
 /// Missing file, unreadable file, or invalid JSON all fall back to defaults rather than erroring,
-/// a broken config shouldn't stop the viewer from opening. Partial JSON (only some fields set)
-/// is filled in from `Config::default()` field by field via `#[serde(default)]` above.
-pub fn load_config() -> Config {
-    let Some(path) = config_path() else {
-        return Config::default();
-    };
-    try_load(&path).unwrap_or_default()
-}
-
-/// Like `load_config()`, but if there wasn't a valid config.json to load from (missing,
-/// unreadable, or invalid JSON), writes a fresh default one to disk too - "reload" should leave
-/// behind a real, editable file rather than just silently falling back to in-memory defaults
-/// (this is what replaces the removed Reset Config button, M7: deleting config.json and clicking
-/// Reload gets you back to a clean default file). Whatever was at that path is backed up first
-/// (single `.bak`, overwritten each time - not a history, just a way back from a broken file).
+/// a broken config shouldn't stop the viewer from opening - and it writes a fresh default file to
+/// that path too, so the viewer always leaves behind a real, editable config.json rather than
+/// silently running on in-memory defaults. Whatever was at that path is backed up first (single
+/// `.bak`, overwritten each time - not a history, just a way back from a broken file). Runs both
+/// on every app startup and whenever the user clicks Apply (M7: replaces the removed Reset Config
+/// button - deleting config.json while the app is running and clicking Apply gets a clean default
+/// file back without needing to restart). Partial JSON (only some fields set) is filled in from
+/// `Config::default()` field by field via `#[serde(default)]` above.
 pub fn reload_config() -> Config {
     let Some(path) = config_path() else {
         return Config::default();

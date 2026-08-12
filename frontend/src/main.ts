@@ -8,7 +8,7 @@ import { createBackend } from './platform/backend';
 import { renderMarkdown } from './core/markdown';
 import { buildToc } from './core/toc';
 import { applyTheme } from './core/theme';
-import { DEFAULT_CONFIG } from './types/config';
+import { DEFAULT_CONFIG, configsEqual } from './types/config';
 import type { Config } from './types/config';
 import type { LmToolbar } from './components/lm-toolbar';
 import type { LmViewer, FileDropDetail, ActiveHeadingDetail } from './components/lm-viewer';
@@ -76,7 +76,6 @@ toolbar.addEventListener('lm-toc-toggle', () => {
 });
 
 toolbar.setCapabilities(backend.capabilities);
-statusbar.setCapabilities(backend.capabilities);
 
 // The currently displayed document's raw content, kept so Reload Config (below) can re-render it
 // against the new config without re-reading the file - config fields that only take
@@ -192,6 +191,12 @@ toolbar.addEventListener('lm-config-folder', () => {
 
 toolbar.addEventListener('lm-reload-config', () => {
   void backend.reloadConfig().then((config) => {
+    // Nothing actually changed (the common case - Apply clicked without editing config.json in
+    // between) - skip applyTheme()/rerenderCurrentDocument() so an unrelated Apply click doesn't
+    // re-run the renderer and bump the perf indicator's render time for no reason.
+    if (configsEqual(config, currentConfig)) {
+      return;
+    }
     currentConfig = config;
     applyTheme(config);
     rerenderCurrentDocument();

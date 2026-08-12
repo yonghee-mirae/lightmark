@@ -97,13 +97,17 @@ fn unwatch_file(registry: State<WatcherRegistry>, path: String) {
 
 #[tauri::command]
 fn read_config() -> backend::Config {
-    backend::load_config()
+    // Self-heals a missing/broken config.json by writing a fresh default one to disk - see
+    // backend::reload_config(). Runs on every app startup, not just when the user clicks Apply.
+    backend::reload_config()
 }
 
 #[tauri::command]
 fn reload_config() -> backend::Config {
-    // Unlike read_config(), self-heals a missing/broken config.json by writing a fresh default
-    // one to disk - see backend::reload_config() (M7: replaces the removed Reset Config button).
+    // Same self-healing backend::reload_config() as read_config() above, just triggered by the
+    // user clicking Apply instead of app startup (M7: replaces the removed Reset Config button -
+    // deleting config.json while the app is running and clicking Apply gets a clean default file
+    // back without restarting).
     backend::reload_config()
 }
 

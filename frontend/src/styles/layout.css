@@ -76,6 +76,10 @@ lm-statusbar {
   font-size: 0.85rem;
 }
 
+lm-statusbar .lm-status-zoom {
+  margin-left: auto;
+}
+
 .lm-content {
   display: grid;
   grid-template-columns: var(--lm-toc-width) 1fr;

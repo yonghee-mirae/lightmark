@@ -32,6 +32,4 @@ Heading1 > Heading2 > Heading3
 Rendered Markdown Only
 
 ## StatusBar
-Filename, Theme, Zoom, Auto Reload
-
-Web 모드: Auto Reload → "N/A" 표시 (capabilities.watch=false)
+Filename, Theme, Zoom
