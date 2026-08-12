@@ -31,6 +31,7 @@ docs/
 - lm-toc
 - lm-viewer
 - lm-statusbar
+- lm-about (M7)
 
 ## Adapters
 BackendApi -> WebBackend | DevBackend | TauriBackend

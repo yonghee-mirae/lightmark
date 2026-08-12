@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -32,7 +32,7 @@ impl Default for Config {
             font_family: "sans-serif".to_string(),
             code_font_family: "monospace".to_string(),
             zoom: 100,
-            toc_visible: true,
+            toc_visible: false,
             breadcrumb_visible: true,
             syntax_highlight: true,
             mermaid: true,
@@ -54,6 +54,11 @@ pub fn config_path() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("config.json"))
 }
 
+fn try_load(path: &Path) -> Option<Config> {
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
 /// Missing file, unreadable file, or invalid JSON all fall back to defaults rather than erroring,
 /// a broken config shouldn't stop the viewer from opening. Partial JSON (only some fields set)
 /// is filled in from `Config::default()` field by field via `#[serde(default)]` above.
@@ -61,28 +66,32 @@ pub fn load_config() -> Config {
     let Some(path) = config_path() else {
         return Config::default();
     };
-    let Ok(text) = fs::read_to_string(&path) else {
+    try_load(&path).unwrap_or_default()
+}
+
+/// Like `load_config()`, but if there wasn't a valid config.json to load from (missing,
+/// unreadable, or invalid JSON), writes a fresh default one to disk too - "reload" should leave
+/// behind a real, editable file rather than just silently falling back to in-memory defaults
+/// (this is what replaces the removed Reset Config button, M7: deleting config.json and clicking
+/// Reload gets you back to a clean default file). Whatever was at that path is backed up first
+/// (single `.bak`, overwritten each time - not a history, just a way back from a broken file).
+pub fn reload_config() -> Config {
+    let Some(path) = config_path() else {
         return Config::default();
     };
-    serde_json::from_str(&text).unwrap_or_default()
-}
-
-/// Overwrites config.json with `Config::default()`, backing up whatever was there first (single
-/// `.bak`, overwritten each time - not a history, just a way back from a bad reset).
-pub fn reset_config() -> std::io::Result<Config> {
-    let dir = config_dir().ok_or_else(missing_config_dir)?;
-    fs::create_dir_all(&dir)?;
-    let path = dir.join("config.json");
-    if path.exists() {
-        fs::copy(&path, dir.join("config.json.bak"))?;
+    if let Some(config) = try_load(&path) {
+        return config;
+    }
+    if let Some(dir) = path.parent() {
+        let _ = fs::create_dir_all(dir);
+        if path.exists() {
+            let _ = fs::copy(&path, dir.join("config.json.bak"));
+        }
     }
     let default = Config::default();
-    fs::write(&path, serde_json::to_string_pretty(&default).unwrap())?;
-    Ok(default)
-}
-
-fn missing_config_dir() -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::NotFound, "no platform config directory")
+    // Best-effort - a failed write here shouldn't stop the caller from getting a usable config.
+    let _ = fs::write(&path, serde_json::to_string_pretty(&default).unwrap());
+    default
 }
 
 #[cfg(test)]

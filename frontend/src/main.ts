@@ -3,6 +3,7 @@ import './components/lm-breadcrumb';
 import './components/lm-toc';
 import './components/lm-viewer';
 import './components/lm-statusbar';
+import './components/lm-about';
 import { createBackend } from './platform/backend';
 import { renderMarkdown } from './core/markdown';
 import { buildToc } from './core/toc';
@@ -14,15 +15,21 @@ import type { LmViewer, FileDropDetail, ActiveHeadingDetail } from './components
 import type { LmStatusbar } from './components/lm-statusbar';
 import type { LmToc, TocSelectDetail } from './components/lm-toc';
 import type { LmBreadcrumb } from './components/lm-breadcrumb';
+import type { LmAbout } from './components/lm-about';
 
 const backend = await createBackend();
 
 // Read once at startup; loadFile() below reads from this for the lazy-loader flags (M4). Starts
 // as DEFAULT_CONFIG so an extremely fast file-open can't race ahead of the readConfig() microtask.
 let currentConfig: Config = DEFAULT_CONFIG;
+// Session-only (docs/PLAN.md M7): starts from the config's tocVisible, but toggling it below
+// never writes back to config.json - CLAUDE.md's "No graphical settings editor" applies.
+let tocVisible = DEFAULT_CONFIG.tocVisible;
 void backend.readConfig().then((config) => {
   currentConfig = config;
   applyTheme(config);
+  tocVisible = config.tocVisible;
+  updateTocDisplay();
 });
 
 const maybeToolbar = document.querySelector<LmToolbar>('lm-toolbar');
@@ -30,8 +37,18 @@ const maybeViewer = document.querySelector<LmViewer>('lm-viewer');
 const maybeStatusbar = document.querySelector<LmStatusbar>('lm-statusbar');
 const maybeToc = document.querySelector<LmToc>('lm-toc');
 const maybeBreadcrumb = document.querySelector<LmBreadcrumb>('lm-breadcrumb');
+const maybeContent = document.querySelector<HTMLDivElement>('.lm-content');
+const maybeAbout = document.querySelector<LmAbout>('lm-about');
 
-if (!maybeToolbar || !maybeViewer || !maybeStatusbar || !maybeToc || !maybeBreadcrumb) {
+if (
+  !maybeToolbar ||
+  !maybeViewer ||
+  !maybeStatusbar ||
+  !maybeToc ||
+  !maybeBreadcrumb ||
+  !maybeContent ||
+  !maybeAbout
+) {
   throw new Error('LightMark: required elements missing from index.html');
 }
 
@@ -40,12 +57,29 @@ const viewer = maybeViewer;
 const statusbar = maybeStatusbar;
 const toc = maybeToc;
 const breadcrumb = maybeBreadcrumb;
+const contentEl = maybeContent;
+const about = maybeAbout;
+
+// No document to show a TOC for yet, so the sidebar stays hidden (and its toggle button disabled,
+// via toolbar.setHasDocument()) until loadFile() runs the first time - regardless of tocVisible.
+let hasDocument = false;
+
+function updateTocDisplay(): void {
+  contentEl.classList.toggle('lm-toc-hidden', !hasDocument || !tocVisible);
+  toolbar.setTocVisible(tocVisible);
+}
+updateTocDisplay();
+
+toolbar.addEventListener('lm-toc-toggle', () => {
+  tocVisible = !tocVisible;
+  updateTocDisplay();
+});
 
 toolbar.setCapabilities(backend.capabilities);
 statusbar.setCapabilities(backend.capabilities);
 
-// The currently displayed document's raw content, kept so Reload/Reset Config (below) can
-// re-render it against the new config without re-reading the file - config fields that only take
+// The currently displayed document's raw content, kept so Reload Config (below) can re-render it
+// against the new config without re-reading the file - config fields that only take
 // effect at render time (mermaidTheme, syntaxHighlight/mermaid/katex on-off, theme's effect on
 // Shiki's baked-in code colors) are otherwise stuck showing whatever was true when the document
 // was first opened, unlike the CSS-variable-driven fields applyTheme() already updates live.
@@ -71,6 +105,8 @@ function loadFile(name: string, content: string): void {
   });
   statusbar.setFilename(name);
   toolbar.setHasDocument(true);
+  hasDocument = true;
+  updateTocDisplay();
 }
 
 // Live reload's watch state. Only ever one at a time - LightMark shows one document.
@@ -117,7 +153,7 @@ function reloadFile(name: string, content: string): void {
   }
 }
 
-// No-op if no document is open yet - Reload/Reset Config work with or without one.
+// No-op if no document is open yet - Reload Config works with or without one.
 function rerenderCurrentDocument(): void {
   if (currentDoc) {
     reloadFile(currentDoc.name, currentDoc.content);
@@ -146,24 +182,16 @@ toolbar.addEventListener('lm-print', () => {
   window.print();
 });
 
+toolbar.addEventListener('lm-about', () => {
+  about.open();
+});
+
 toolbar.addEventListener('lm-config-folder', () => {
   void backend.openConfigFolder();
 });
 
-toolbar.addEventListener('lm-config-file', () => {
-  void backend.openConfigFile();
-});
-
 toolbar.addEventListener('lm-reload-config', () => {
   void backend.reloadConfig().then((config) => {
-    currentConfig = config;
-    applyTheme(config);
-    rerenderCurrentDocument();
-  });
-});
-
-toolbar.addEventListener('lm-reset-config', () => {
-  void backend.resetConfig().then((config) => {
     currentConfig = config;
     applyTheme(config);
     rerenderCurrentDocument();

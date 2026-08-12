@@ -1,4 +1,4 @@
-// Tauri mode: @tauri-apps/api invoke()/listen() bridge to the 9 IPC commands (docs/IPC_SPEC.md),
+// Tauri mode: @tauri-apps/api invoke()/listen() bridge to the 7 IPC commands (docs/IPC_SPEC.md),
 // each a thin binding in src-tauri/src/lib.rs delegating to the `backend` Rust crate. This is
 // the ONLY file allowed to import @tauri-apps/* (docs/ARCHITECTURE.md "Tauri Rules", enforced by
 // ESLint's no-restricted-imports override for this path).
@@ -44,19 +44,11 @@ export class TauriBackend implements BackendApi {
     return invoke<Config>('reload_config');
   }
 
-  resetConfig(): Promise<Config> {
-    return invoke<Config>('reset_config');
-  }
-
   openConfigFolder(): Promise<void> {
     return invoke('open_config_folder');
   }
 
-  openConfigFile(): Promise<void> {
-    return invoke('open_config_file');
-  }
-
-  // Not one of the 9 IPC_SPEC.md commands - lets main.ts pull the CLI/file-association path once
+  // Not one of the 7 IPC_SPEC.md commands - lets main.ts pull the CLI/file-association path once
   // on startup, the same pull-based shape Dev mode gets for free from the `?file=` query param.
   getInitialPath(): Promise<string | null> {
     return invoke<string | null>('get_initial_path');

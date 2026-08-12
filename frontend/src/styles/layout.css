@@ -23,9 +23,49 @@ body {
 }
 
 lm-toolbar {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   border-bottom: 1px solid var(--lm-color-border);
-  padding: 0.5rem 1rem;
+  padding: 0.3rem 1rem;
+}
+
+/* A flat button style for the toolbar (user feedback: the browser-default buttons looked too
+   plain for the app's own minimalist identity - docs/CLAUDE.md "Fast. Lightweight. Focused.").
+   Kept deliberately simple - no icons, no shadows, just a restrained hover/pressed/disabled
+   treatment built from the existing theme tokens. */
+lm-toolbar button {
+  margin: 0;
+  border: none;
+  border-radius: 6px;
+  padding: 0.25rem 0.7rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+lm-toolbar button:hover:not(:disabled) {
+  background: var(--lm-color-border);
+}
+
+lm-toolbar button:focus-visible {
+  outline: 2px solid var(--lm-color-accent);
+  outline-offset: 1px;
+}
+
+/* TOC Toggle's "on" state (docs/PLAN.md M7) - the only toolbar button with real on/off state. */
+lm-toolbar button[aria-pressed='true'] {
+  background: var(--lm-color-accent);
+  color: #ffffff;
+}
+
+lm-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 lm-statusbar {
@@ -41,6 +81,15 @@ lm-statusbar {
   grid-template-columns: var(--lm-toc-width) 1fr;
   min-height: 0;
   overflow: hidden;
+}
+
+/* TOC Toggle (docs/PLAN.md M7) - session-only, driven by main.ts toggling this class. */
+.lm-content.lm-toc-hidden {
+  grid-template-columns: 1fr;
+}
+
+.lm-content.lm-toc-hidden lm-toc {
+  display: none;
 }
 
 lm-toc {
@@ -65,8 +114,18 @@ lm-viewer {
   padding: 1rem;
 }
 
+/* Centered over the full viewer pane (not just lm-viewer's own padded box), positioned relative
+   to .lm-viewer-pane (the nearest `position` ancestor) so it's unaffected by lm-viewer's own
+   padding/scroll. */
 .lm-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
   color: var(--lm-color-muted);
+  font-size: 1.25rem;
+  text-align: center;
 }
 
 /* Breadcrumb: a toast over the top of the viewer pane, not a permanently docked row. Fades in on
@@ -136,6 +195,28 @@ lm-toc a {
 lm-toc a.active {
   color: var(--lm-color-accent);
   font-weight: 600;
+}
+
+/* About (docs/PLAN.md M7) - a native <dialog> so showModal() handles the backdrop/centering/
+   Escape-to-close for free; only the box itself needs theming. */
+.lm-about-dialog {
+  border: 1px solid var(--lm-color-border);
+  border-radius: 6px;
+  background: var(--lm-color-bg);
+  color: var(--lm-color-fg);
+  padding: 1.5rem;
+  /* Without a Close button (or any other focusable child), showModal() focuses the <dialog>
+     itself, which otherwise picks up the browser's default focus outline - there's nothing
+     interactive about the dialog box itself to show that ring for. */
+  outline: none;
+}
+
+.lm-about-dialog h2 {
+  margin-top: 0;
+}
+
+.lm-about-tagline {
+  color: var(--lm-color-muted);
 }
 
 /* Rendered markdown */
@@ -228,7 +309,8 @@ lm-toc a.active {
   lm-toolbar,
   lm-toc,
   lm-statusbar,
-  lm-breadcrumb {
+  lm-breadcrumb,
+  lm-about {
     display: none !important;
   }
 

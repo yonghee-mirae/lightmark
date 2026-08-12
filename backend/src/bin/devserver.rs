@@ -27,7 +27,6 @@ async fn main() {
         .route("/api/file", get(get_file))
         .route("/api/config", get(get_config))
         .route("/api/config/reload", post(post_config_reload))
-        .route("/api/config/reset", post(post_config_reset))
         .route("/api/events", get(get_events))
         .layer(middleware::from_fn(allow_frontend_origin));
 
@@ -68,16 +67,9 @@ async fn get_config() -> Json<backend::Config> {
 }
 
 async fn post_config_reload() -> Json<backend::Config> {
-    // No in-memory cache to invalidate - load_config() always reads from disk fresh, so "reload"
-    // and a plain read are the same operation here.
-    Json(backend::load_config())
-}
-
-async fn post_config_reset() -> Response {
-    match backend::reset_config() {
-        Ok(config) => Json(config).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
-    }
+    // Unlike get_config(), self-heals a missing/broken config.json by writing a fresh default one
+    // to disk - see backend::reload_config() (M7: replaces the removed Reset Config route).
+    Json(backend::reload_config())
 }
 
 async fn get_events(Query(q): Query<PathQuery>) -> Response {

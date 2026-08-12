@@ -31,9 +31,9 @@
 - [x] Tauri Integration
 
 ## Milestone 7
-- [ ] TOC Toggle
+- [x] TOC Toggle
 - [ ] Zoom
-- [ ] About
+- [x] About
 
 ## Milestone 8
 - [ ] Packaging — AppImage 패키징은 별도 진행(fuse/patchelf 미설치)

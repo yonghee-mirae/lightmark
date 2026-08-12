@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "LightMark",
-        "width": 1000,
-        "height": 700,
+        "width": 960,
+        "height": 720,
+        "minWidth": 640,
+        "minHeight": 480,
         "resizable": true,
         "fullscreen": false
       }

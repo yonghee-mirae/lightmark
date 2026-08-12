@@ -211,6 +211,7 @@ lm-breadcrumb
 lm-toc
 lm-viewer
 lm-statusbar
+lm-about
 ```
 
 Each component must:
@@ -369,9 +370,7 @@ Users are expected to edit the file directly.
 Application only provides:
 
 - Open Config Folder
-- Open Config File
 - Reload Config
-- Reset Config
 
 ---
 

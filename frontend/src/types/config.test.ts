@@ -9,7 +9,7 @@ describe('DEFAULT_CONFIG', () => {
       fontFamily: 'sans-serif',
       codeFontFamily: 'monospace',
       zoom: 100,
-      tocVisible: true,
+      tocVisible: false,
       breadcrumbVisible: true,
       syntaxHighlight: true,
       mermaid: true,

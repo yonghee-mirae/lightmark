@@ -95,7 +95,7 @@ export class LmViewer extends HTMLElement {
   }
 
   private renderEmpty(): void {
-    this.innerHTML = '<p class="lm-empty">Drop a Markdown file here, or use Open.</p>';
+    this.innerHTML = '<p class="lm-empty">Drop a Markdown file here.</p>';
   }
 
   private observeHeadings(): void {

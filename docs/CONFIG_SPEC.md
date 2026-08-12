@@ -13,7 +13,7 @@ Linux: ~/.config/LightMark/config.json
   "fontFamily":"sans-serif",
   "codeFontFamily":"monospace",
   "zoom":100,
-  "tocVisible":true,
+  "tocVisible":false,
   "breadcrumbVisible":true,
   "syntaxHighlight":true,
   "mermaid":true,

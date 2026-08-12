@@ -7,7 +7,7 @@ pub mod file;
 pub mod state;
 pub mod watcher;
 
-pub use config::{config_dir, config_path, load_config, reset_config, Config};
+pub use config::{config_dir, load_config, reload_config, Config};
 pub use file::{read_file, FileError, MAX_FILE_SIZE};
 pub use state::{initial_open_dir, save_last_opened_dir};
 pub use watcher::{watch_file, FileWatcher};

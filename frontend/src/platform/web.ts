@@ -44,12 +44,4 @@ export class WebBackend implements BackendApi {
   openConfigFolder(): Promise<void> {
     throw new Error('openConfigFolder is not supported in Web mode');
   }
-
-  openConfigFile(): Promise<void> {
-    throw new Error('openConfigFile is not supported in Web mode');
-  }
-
-  resetConfig(): Promise<Config> {
-    return Promise.resolve(DEFAULT_CONFIG);
-  }
 }

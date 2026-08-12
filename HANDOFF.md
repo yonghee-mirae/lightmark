@@ -10,10 +10,10 @@
 - **M4 (Mermaid / KaTeX / Shiki 지연 로딩)**: 완료. 아래 "M4 구현 상세" 참고.
 - **M5 (Rust 백엔드 + Dev 서버 + 어댑터)**: 완료. 아래 "M5 구현 상세" 참고.
 - **M6 (Tauri 통합)**: **완료, 전체 검증 완료**(+사용자 리포트로 버그 2건 수정: Open 버튼 데드락, Tauri drag&drop). 아래 "M6 구현 상세" 참고. Packaging/Release는 원래 M6에 있었으나 **M8로 분리**(사용자 요청 — 통합과 배포는 성격이 달라서, 배포는 맨 마지막 마일스톤으로). 사용자가 실제 Tauri 앱에서 직접 확인 완료: live reload, Config 4개 버튼(Config Folder/File 열기, Reload/Reset Config), Open 다이얼로그 마지막 위치 기억, CLI 인자로 파일 열기, single-instance 라우팅.
-- **M7 (TOC Toggle / Zoom / About)**: 신규 마일스톤, 미착수. 아래 "다음에 할 일" 참고.
+- **M7 (TOC Toggle / Zoom / About)**: **TOC Toggle, About 구현 완료.** TOC Toggle은 사용자가 실제 브라우저에서 클릭해 정상 동작 확인("toc toggle 버튼이 잘 동작하는 건 확인했어"). About은 사용자가 실제로 열어보며 버그(Close 버튼 제거 후 의도치 않은 outline)를 리포트/수정까지 마쳤고 그 뒤 이어서 다른 요청(버튼 라벨/Config File·Reset 삭제 등)으로 넘어감 — 즉 실사용 중이지만 최종 상태에 대한 별도의 "정상 동작" 재확인 문구는 없음. 이후 버튼 디자인 전면 개편, 라벨 한 단어화, Config File/Reset Config 기능 삭제(+Reload가 자기 치유), `Reload Config`→`Apply` 라벨, 툴바 높이 축소까지 전부 사용자가 최종 확인("좋아. 모두 좋아."/"ok. 모두 좋아."). Zoom은 미착수. 아래 "M7 구현 상세"/"다음에 할 일" 참고.
 - **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리), 미착수. AppImage 패키징(`patchelf`/`libfuse2t64` 미설치), 릴리스 빌드 성능 실측(<1s, <30MB), macOS `RunEvent::Opened` 실기 검증 등.
 
-다음 세션은 사용자의 새 지시를 기다리는 상태에서 시작 — M7과 M8 중 어느 걸 먼저 할지가 다음 화두.
+다음 세션은 사용자의 새 지시를 기다리는 상태에서 시작 — M7 나머지(Zoom), M8 중 어느 걸 먼저 할지가 다음 화두.
 
 ## M2 구현 상세
 
@@ -50,6 +50,9 @@
 - `lm-breadcrumb.setActive(id)` 호출 시 `.lm-breadcrumb-visible` 클래스 토글로 fade in, `setTimeout`(`VISIBLE_MS = 1500`, 밀리초)으로 1.5초 후 자동 fade out. 연속 변경 시 타이머 리셋(`clearHideTimer`).
 - 스타일은 "라인 없는 floating pill + color-mix 배경"으로 한 차례 바꿨다가, 사용자가 스타일은 원래(전체 폭 bar + `border-bottom`)가 더 좋다고 하여 **스타일만 원복**, 유지시간 1.5초는 유지. 현재 `frontend/src/styles/layout.css`의 `lm-breadcrumb` 규칙이 최종 상태.
 - 폭 부족 시 단계적 축약 로직(전체 표시 → `First > ... > Last` → 개별 ellipsis)은 이번 변경과 무관하게 그대로 유지됨.
+
+### Breadcrumb 버그(사용자 리포트, M7 이후 수정됨): 최상단 스크롤 후에도 빈 토스트가 잔류
+문서 최상단으로 빠르게 스크롤해서 활성 heading이 없어지면(`setActive(null)`) breadcrumb는 즉시 사라져야 하는데, 실제로는 **이전 heading 활성화 때 걸어둔 `hideTimer`가 그대로 살아있어서** 그 타이머가 끝날 때까지 내용 없는 빈 영역만 계속 보이다가 사라졌음. 원인: `setActive(id)`가 `id`가 있을 때만 `show()`(클래스 추가 + 타이머 재예약)를 호출했고, `id`가 없을 때는 `render()`(내용만 빈 크럼으로 교체)만 하고 끝 — 클래스/타이머는 그대로 방치. 수정: `lm-breadcrumb.ts`에 `hide()`(타이머 즉시 취소 + `lm-breadcrumb-visible` 클래스 즉시 제거)를 신설, `setActive(id)`가 `id`가 falsy면 `hide()`를 호출하도록 함.
 
 ### main.ts 이벤트 순서 버그(자체 발견, 수정됨)
 `viewer.setContent(...)`가 새 문서의 첫 heading에 대한 `lm-active-heading` 이벤트를 동기적으로 발생시키므로, `toc.setToc(...)`/`breadcrumb.setHeadings(...)`가 **반드시 그 전에** 호출되어야 함(안 그러면 이전 문서 데이터 기준으로 활성 heading을 계산하게 됨). `main.ts`의 `loadFile()`에서 순서를 수정함.
@@ -225,7 +228,56 @@ Tauri 전용(Web은 `<input type=file>`이 브라우저 보안상 시작 디렉�
 ## 결정됨 (재검토 요청 없으면 이대로): md 파일 내 상대 경로 이미지 링크
 md 파일 위치 기준으로 resolve하는 게 의미상 맞지만(Web은 브라우저 File API 보안상 원천적으로 불가능, Dev/Tauri는 고칠 수 있음), **사용자가 지금 상태(모드별로 깨져 있는 현재 동작) 그대로 유지하기로 결정** — 수정하지 않음. `docs/PLAN.md` Open Questions #3 참고.
 
+## M7 구현 상세
+
+### TOC Toggle (완료)
+- **상태 소유**: `main.ts`가 `tocVisible`(session-only, `let`)로 소유. `readConfig()`가 끝나면 `config.tocVisible`로 초기화(그전엔 `DEFAULT_CONFIG.tocVisible` — 기본값은 이후 `false`로 뒤집힘, 아래 참고). 다른 컴포넌트 상태(예: `hasDocument`, `capabilities`)와 같은 패턴 — 컴포넌트는 자기 상태를 안 갖고 `setXxx()`로 받아서 렌더만 함.
+- **토글 배선**: `lm-toolbar`의 TOC Toggle 버튼(더 이상 `disabled` 아님) 클릭 → `lm-toc-toggle` 이벤트 → `main.ts`의 `setTocVisible(!tocVisible)` → `.lm-content` 엘리먼트에 `lm-toc-hidden` 클래스 토글 + `lm-toolbar.setTocVisible()`로 버튼 `aria-pressed` 갱신.
+- **CSS**: `layout.css`에 `.lm-content.lm-toc-hidden { grid-template-columns: 1fr; }` + `.lm-content.lm-toc-hidden lm-toc { display: none; }` 추가 — `.lm-content`의 그리드 컬럼(`var(--lm-toc-width) 1fr`)을 명시적으로 `1fr`로 덮어써서 뷰어가 전체 폭을 차지하게 함.
+- **config.json에는 쓰지 않음** — `CLAUDE.md`의 "No graphical settings editor" 그대로: `tocVisible`은 시작 상태로만 읽히고, 세션 중 토글은 메모리에만 남는다(앱 재시작하면 config.json의 값으로 돌아감).
+- **개선(사용자 요청): 문서를 열기 전엔 버튼 비활성화 + TOC 영역도 숨김.** `main.ts`에 `hasDocument`(session-only, `loadFile()`에서 `true`로 전환, 문서를 닫는 기능이 없어서 되돌아갈 일 없음 — Print 버튼과 같은 관용구) 추가. `updateTocDisplay()`가 `!hasDocument || !tocVisible`로 표시 여부를 계산해서, 문서가 없으면 `tocVisible`(기본값 `true`)과 무관하게 항상 숨김. `lm-toolbar`도 TOC Toggle 버튼에 `${this.hasDocument ? '' : 'disabled'}` 추가(Print 버튼과 동일한 조건 재사용).
+- **개선(사용자 요청): 문서를 열기 전 뷰어 안내 문구를 화면 정가운데로, 글자도 크게.** `layout.css`의 `.lm-empty`를 `position: absolute` + `translate(-50%, -50%)`로 전환, 기준은 `.lm-viewer-pane`(이미 `position: relative`) — `lm-viewer` 자신의 padding/스크롤과 무관하게 뷰어 영역 전체 중앙에 옴. `font-size: 1.25rem` 추가.
+- **개선(사용자 요청): `tocVisible` 기본값을 `true`→`false`로.** "파일을 열어도 TOC는 기본으로 안 보이고, 토글 버튼을 눌러야만 보이게" — `tocVisible`이 이미 "시작 상태"로 설계돼 있어서(`CONFIG_SPEC.md`), 동작 경로는 그대로 두고 기본값만 뒤집음(config.json에서 `true`로 바꾸면 여전히 시작부터 보이게 할 수 있음). `frontend/src/types/config.ts`/`backend/src/config.rs`/`docs/CONFIG_SPEC.md` 세 곳 동시 수정.
+- **검증**: `npm run lint && npm run typecheck && npm run build && npm run test` + `cargo fmt --check && cargo clippy --workspace --all-features && cargo test --workspace` 전부 통과. 브라우저에서 문서를 열기 전엔 버튼이 비활성화되고 TOC 영역이 안 보이며, 문서를 열어도 기본은 계속 안 보이고 버튼을 눌러야만 나타나는 것 확인. **사용자가 실제 앱에서 클릭해보고 정상 동작 확인함**("toc toggle 버튼이 잘 동작하는 건 확인했어").
+
+### About (완료)
+- **새 컴포넌트 `lm-about`**(`frontend/src/components/lm-about.ts`): 네이티브 `<dialog>`를 감싸는 얇은 래퍼. `open()`이 `dialogEl.showModal()`을 호출 — 배경 딤(`::backdrop`)/화면 중앙 정렬/Escape로 닫기가 브라우저가 공짜로 처리해줌(직접 구현 안 함). 배경(다이얼로그 박스 바깥) 클릭도 닫히게 처리(클릭 타겟이 `<dialog>` 엘리먼트 자신인 경우로 판별). `index.html`에 `<lm-about>`을 `#app` 그리드 바깥(별도 sibling)에 둬서 그리드 레이아웃에 전혀 영향 없음.
+- **버전 소스**: IPC로 백엔드(Tauri/Cargo.toml)에 물어보지 않음 — Web/Dev/Tauri 세 모드 모두 동일한 값을 보여줘야 해서(`docs/PLAN.md` M7: "플랫폼 API에 기대지 않는"), 프론트엔드 자신의 `package.json`을 `tsconfig.json`이 이미 켜둔 `resolveJsonModule`로 직접 import(`core/appInfo.ts`). 앱 이름("LightMark")은 하드코딩 — `package.json`의 `name`은 `lightmark-frontend`(npm 패키지명)라 표시용 이름과 다름.
+- **`lm-toolbar`**: About 버튼의 `disabled` 제거, `data-action="about"` → `lm-about` 이벤트로 배선. Print/TOC Toggle과 달리 `hasDocument`로 게이트하지 않음 — 앱 정보 표시는 문서 유무와 무관.
+- **CSS**: `.lm-about-dialog`에 테마 변수(`--lm-color-bg/fg/border`)로 테두리/배경 적용. `@media print` 목록에 `lm-about`도 추가(다른 오버레이 엘리먼트와 동일하게 인쇄 시 숨김).
+- **검증**: `npm run lint && npm run typecheck && npm run build && npm run test` 전부 통과. 브라우저에서 About 버튼 클릭 시 모달이 뜨고 앱 이름/버전이 보이며, 배경 클릭/Escape로 닫히는 것 확인(Close 버튼은 이후 사용자 요청으로 제거 — 아래 참고). **사용자가 실제 앱에서 열어보고 버그(Close 제거 후 의도치 않은 outline)를 리포트** — 아래 참고. 그 수정 이후의 최종 상태에 대한 별도 "정상 동작" 재확인 문구는 없었지만, 그 뒤로도 About 관련 후속 요청(태그라인/개발자 표시 추가 등)이 계속 이어져서 실사용 중인 것으로 보임.
+- **개선(사용자 요청): 이름과 버전 사이에 한 줄 설명 추가.** `core/appInfo.ts`에 `APP_TAGLINE = 'Fast, lightweight, focused Markdown viewer.'` 추가, `lm-about`에서 이름(`h2`)과 버전 사이에 `<p class="lm-about-tagline">`로 표시(`--lm-color-muted`로 톤 다운).
+- **개선(사용자 요청): 개발자 표시 추가.** `core/appInfo.ts`에 `APP_AUTHOR = 'Yonghee Yu'` 추가(하드코딩 — `package.json`에 `author` 필드가 없고, `APP_NAME`도 같은 방식으로 이미 하드코딩돼 있어서 일관됨), 버전 아래에 "Developed by {APP_AUTHOR}"로 표시.
+- **개선(사용자 요청): 버튼 디자인 전면 개편.** 툴바/About 다이얼로그 버튼이 지금까지 브라우저 기본 스타일 그대로였음("디자인이 너무 별로"라는 리포트). `layout.css`에 `lm-toolbar button, .lm-about-dialog button` 공유 셀렉터로 하나의 flat 스타일 추가 — 테두리 없음, `border-radius: 6px`, hover 시 `--lm-color-border` 배경, `focus-visible` 아웃라인, `disabled` 시 `opacity: 0.4`. TOC Toggle의 `aria-pressed="true"`(눌린 상태)는 accent 배경 + 흰 글자로 별도 강조. `lm-toolbar`도 `display: flex` + `gap: 0.4rem`으로 정돈. 아이콘·그림자는 추가 안 함(`CLAUDE.md`의 "Fast. Lightweight. Focused." 정체성에 맞춰 최대한 단순하게) — 컴포넌트 TS 템플릿은 전혀 안 건드리고 CSS만으로 처리.
+- **개선(사용자 요청): 클릭 후 버튼에 포커스가 남지 않도록.** "버튼은 클릭만 가능하고 focus가 남지 않아야" — CSS `:focus-visible`만으로는 부족했음(WebKitGTK 등 일부 엔진은 마우스 클릭도 `:focus-visible`로 잡을 수 있음). `lm-toolbar`의 `dispatchOnClick()`에서 클릭 즉시 `button.blur()` 호출(커스텀 이벤트 디스패치 전) — Open/TOC Toggle/Print/Config 4개/About 전부 이 한 곳에서 공유. About 다이얼로그는 별도 이슈: 네이티브 `<dialog>.close()`가 `showModal()`을 호출했던 엘리먼트(About 버튼)로 포커스를 되돌리는 게 표준 동작이라, `lm-about`의 `close()`에서 `dialogEl.close()` 다음에 `document.activeElement?.blur()`를 추가로 호출해 그 복원된 포커스도 지움. Tab으로 버튼까지 이동했을 때의 `:focus-visible` 링(키보드 접근성)은 그대로 유지 — 실제로 클릭/Enter로 "활성화"한 뒤에만 사라짐.
+- **개선(사용자 요청): Close 버튼 제거.** "없는 게 좋겠다"는 피드백 — `lm-about`에서 Close 버튼과 그 클릭 리스너를 삭제, `layout.css`의 `.lm-about-dialog button` 관련 셀렉터들도 같이 정리(더 이상 다이얼로그 안에 버튼이 없어서 죽은 규칙이 됨 — `lm-toolbar button`만 남김). 닫는 방법은 배경 클릭과 Escape(네이티브 `<dialog>` 기본 동작) 두 가지로 유지.
+  - **버그(제거로 인한 부작용) + 개선(사용자 요청) 2건**:
+    1. **의도치 않은 outline**: Close 버튼(포커스 가능한 자식)이 없어지자 `showModal()`이 `<dialog>` 자신에 포커스를 줘서 브라우저 기본 focus outline이 다이얼로그 테두리에 그려짐. `.lm-about-dialog`에 `outline: none` 추가로 제거(그 안에 실제로 클릭 가능한 인터랙티브 요소가 없으니 outline을 보여줄 이유가 없음).
+    2. **"다이얼로그 안/밖 어디를 클릭해도 닫히게, Esc는 유지"**: 기존엔 배경(클릭 타겟이 `<dialog>` 자신인 경우)만 닫혔음 — Close 버튼이 없어진 지금은 다이얼로그 내용 클릭도 딱히 다른 목적이 없어서, `event.target` 체크를 없애고 `<dialog>`에서 일어나는 모든 클릭(내용/배경 구분 없이)을 `close()`로 연결. Escape는 네이티브 `<dialog>` 동작이라 손대지 않음(그대로 유지).
+
+## 버튼 라벨 축약 + Config File/Reset Config 기능 삭제 (신규)
+- **개선(사용자 요청): 버튼 라벨을 한 단어로.** "화면 폭이 좁을 수 있어서 버튼은 한 단어로 표시하고 싶어" — `TOC Toggle`→`TOC`, `Config Folder`→`Config`, `Reset Config`→`Reset`. `Reload Config`는 그대로 유지 — "Reload"만 쓰면 md 파일 재로딩(자동 live reload)과 config 재로딩이 헷갈릴 수 있다고 사용자가 지적, 좋은 한 단어를 아직 못 찾아서 사용자가 더 생각해보기로 함(제안했던 대안: Resync/Reconfig — 아직 미확정).
+- **개선(사용자 요청): 툴바 높이 축소.** "버튼 위/아래 padding과 margin이 좀 커서 메뉴바 높이 전체적으로 좀 커" — `layout.css`의 `lm-toolbar` 수직 padding `0.5rem`→`0.3rem`, 버튼 수직 padding `0.4rem`→`0.25rem`(수평 padding은 유지). 버튼에 `margin: 0`도 명시적으로 추가(브라우저 기본값이 이미 0이라 시각적 변화는 없지만 의도를 코드에 남겨둠).
+- **개선(사용자 요청): 뷰어 안내 문구에서 ", or use Open" 삭제.** `"Drop a Markdown file here, or use Open."` → `"Drop a Markdown file here."` (`lm-viewer.ts`의 `renderEmpty()`).
+- **개선(사용자 요청, Reset 삭제 이후 확정): `Reload Config` 라벨을 `Apply`로.** "config 관련 다른 버튼들이 없어졌으니, reload는 그냥 적용한다는 의미로 apply로 해도 좋을 것 같아" — Config File/Reset이 없어져서 원래 우려하던 혼동 대상이 줄었고, "지금 config.json을 적용한다"는 효과 중심 이름이 더 낫다고 판단해 채택. `lm-toolbar`의 `CONFIG_ACTIONS` 라벨 문자열만 변경 — `data-action="reload-config"`/`lm-reload-config` 이벤트/`BackendApi.reloadConfig()`/`backend::reload_config()`/Tauri `reload_config` 커맨드 이름은 전부 안 건드림(내부 동작을 정확히 나타내는 이름이라 그대로 두는 게 맞다고 판단 — `Config Folder`→`Config`처럼 라벨과 내부 식별자가 갈라지는 건 이미 있던 패턴).
+- **기능 삭제(사용자 요청, 완전 삭제로 확정): Open Config File.** 삭제 전 `CLAUDE.md` Config Rules가 "Open Config Folder / Open Config File / Reload Config / Reset Config" 4개 제공을 명시하고 있어서 문서와 안 맞게 될 걸 먼저 확인 → 사용자가 "완전히 삭제"(버튼만 숨기는 게 아니라)로 확정.
+  - **프론트**: `lm-toolbar`의 `CONFIG_ACTIONS`에서 `config-file` 제거, `main.ts`의 `lm-config-file` 리스너 제거. `BackendApi.openConfigFile()`과 `WebBackend`/`DevBackend`/`TauriBackend` 3개 구현 전부 제거.
+  - **Tauri**: `src-tauri/src/lib.rs`의 `open_config_file` 커맨드 함수와 `invoke_handler` 등록 제거.
+  - **정리(부수)**: `backend::config_path()`가 `open_config_file`의 유일한 외부 소비자였음 — `backend/src/lib.rs`의 `pub use`에서 뺌(함수 자체는 `config.rs`가 내부적으로 `load_config()`에 계속 씀 — 삭제 아니라 재노출만 정리).
+  - **문서**: `docs/IPC_SPEC.md`(9→8개 커맨드), `docs/UI_SPEC.md`(툴바 목록), `CLAUDE.md`(Config Rules의 "Open Config File" 항목) 전부 수정.
+- **검증**: 프론트(`lint/typecheck/build/test`) + 백엔드(`cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`) 전부 통과.
+- **기능 삭제(사용자 요청): Reset Config, 대신 Reload Config가 자기 치유.** Config File 삭제로 "config.json을 지워도 다시 편집할 파일을 만들 방법이 없다"는 gap을 내가 먼저 짚었고("이거 없이는 Reset도 없이는 완전히 새 파일을 만들 방법이 없다"), 사용자가 "config 파일을 삭제하고 reload를 하면 기본 config 파일을 다시 써주는 기능을 추가하고 reset 버튼을 없애는 건 어때?"로 해결책 제안 → 그대로 구현.
+  - **`backend::reload_config()`(신설, `backend/src/config.rs`)**: `load_config()`(순수 읽기 - 파일이 없거나 깨졌으면 메모리 기본값만 반환, 디스크에 아무것도 안 씀)와 별개로, 읽기/파싱에 실패하면 기본값을 **실제로 그 경로에 써준다** — 기존 파일이 있었으면(깨진 파일이라도) 먼저 `config.json.bak`으로 백업(옛 `reset_config()`가 하던 백업 습관을 그대로 재사용). 파일 읽기+파싱 로직은 `try_load(path) -> Option<Config>`로 뽑아내서 `load_config()`/`reload_config()` 둘 다 재사용(리팩터, 동작 변화 없음).
+  - **`read_config()`/`GET /api/config`는 안 건드림**: 계속 `load_config()`만 호출 — 자기 치유(디스크 쓰기)는 명시적으로 "Reload"를 눌렀을 때만 일어나고, 단순 읽기는 여전히 부작용 없음.
+  - **삭제**: `backend::reset_config()` 함수, `src-tauri`의 `reset_config` 커맨드+`invoke_handler` 등록, devserver의 `POST /api/config/reset` 라우트+핸들러, 프론트 `BackendApi.resetConfig()`(Web/Dev/Tauri 3개 어댑터 전부), `lm-toolbar`의 Reset 버튼(`CONFIG_ACTIONS`에서 제거), `main.ts`의 `lm-reset-config` 리스너, `CLAUDE.md` Config Rules의 "Reset Config" 항목, `docs/IPC_SPEC.md`(reset_config 관련 커맨드/Dev Server 표 행/이벤트 설명 문구)까지.
+  - **검증**: 백엔드(`cargo fmt --check`/`clippy --workspace --all-features`(+`--features dev-server`도 별도 확인)/`test --workspace`) + 프론트(`lint/typecheck/build/test`) 전부 통과. `reload_config()`의 자기 치유 로직 자체는 새 단위 테스트를 안 붙임 — `load_config()`/구 `reset_config()`도 실제 OS config 디렉터리에 의존하는 부수효과 함수라 원래부터 단위 테스트 대상이 아니었던 것과 같은 이유(`config.rs`엔 순수 serde 직렬화 테스트 2개만 있음).
+
+## 창 크기 (신규)
+- **개선(사용자 요청): 앱 최소 크기 제한.** `minWidth`/`minHeight` 추가 — 처음 `600x400`으로 시작했다가 "너무 작다"는 피드백으로 `800x600`, 이후 다시 `640x480`으로 변경. 세 값 다 4:3 비율.
+- **개선(사용자 요청): 기본 창 크기를 4:3 비율로.** 기존 `width: 1000, height: 700`(M6에서 800x600 → 1000x700으로 수동 조정했던 값, 4:3이 아니었음)을 `960x720`으로 변경 — `minWidth`/`minHeight`(현재 640x480)와 같은 4:3 비율 유지, 여전히 그보다 크므로 충돌 없음.
+- Tauri 전용 설정이라 Web/Dev 모드는 영향 없음(브라우저 탭/창 크기는 OS·브라우저가 관리, 앱이 제어할 수 있는 영역이 아님). `cargo check -p app`으로 스키마 유효성 확인.
+
 ## 다음에 할 일 (사용자 지정 대기)
-- **M7(신규, 아직 미착수)**: TOC Toggle / Zoom / About 버튼 — M1부터 계속 `disabled`로 미뤄오던 것들. 사용자가 "파일을 열어도 활성화 안 됨"이라고 리포트해서(버그가 아니라 원래 미구현 상태였다고 설명함), 세 개 다 새 마일스톤으로 분리해서 진행하기로 확정. 범위/설계는 `docs/PLAN.md` M7 절 참고(TOC Toggle/Zoom 둘 다 config.json에는 안 쓰고 세션 동안만 유지, About은 플랫폼 API 없이 인페이지 표시).
+- **M7 나머지(Zoom) 미착수**: 범위/설계는 `docs/PLAN.md` M7 절 참고(config.json에 안 쓰고 세션 동안만 유지). TOC Toggle/About을 포함한 M7의 나머지 전부는 사용자 확인 완료(위 "진행 상황" M7 줄 참고) — Zoom만 남음.
 - **M8(신규, 아직 미착수, M6에서 분리)**: 패키징/배포. 원래 M6에 같이 있었는데, "통합은 끝났고 배포는 성격이 다르니 마지막 마일스톤으로 분리"하자는 사용자 요청으로 M6과 분리 확정. `patchelf`/`libfuse2t64` 설치 후 `npm run tauri build`로 AppImage 등 패키징(필요하면 `tauri.conf.json`의 `bundle.targets`로 범위 조정), 릴리스 빌드로 시작 시간/메모리 실측, macOS `RunEvent::Opened` 실기 검증까지 포함.
-- M7과 M8 중 어느 걸 먼저 할지는 아직 사용자 지정 안 됨.
+- M7 나머지(Zoom)와 M8 중 어느 걸 먼저 할지는 아직 사용자 지정 안 됨.

@@ -8,9 +8,11 @@ Status Bar
 ```
 
 ## Toolbar
-Open, TOC Toggle, Print, Config Folder, Zoom, About
+Open, TOC, Print, Config, Zoom, About
 
-Web 모드: Config Folder 버튼 숨김 (capabilities.configFile=false)
+Web 모드: Config 버튼 숨김 (capabilities.configFile=false)
+
+버튼 라벨은 화면 폭이 좁을 수 있어서 한 단어로 유지(사용자 요청, M7).
 
 ## TOC
 Default Width 280px

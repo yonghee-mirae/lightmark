@@ -1,7 +1,7 @@
 // Thin IPC bindings only - every command delegates to the `backend` crate (docs/PLAN.md M6:
 // "IPC 9개 커맨드를 backend 함수로 위임하는 바인딩만. 로직 금지"). The one exception is
-// `open_file`/`open_config_folder`/`open_config_file`, which need a native dialog/opener - that
-// logic lives in the `tauri-plugin-dialog`/`tauri-plugin-opener` plugins, not here.
+// `open_file`/`open_config_folder`, which need a native dialog/opener - that logic lives in the
+// `tauri-plugin-dialog`/`tauri-plugin-opener` plugins, not here.
 
 mod cli;
 
@@ -102,14 +102,9 @@ fn read_config() -> backend::Config {
 
 #[tauri::command]
 fn reload_config() -> backend::Config {
-    // No in-memory cache to invalidate - load_config() always reads from disk fresh, matching
-    // bin/devserver.rs's post_config_reload (docs/PLAN.md M5).
-    backend::load_config()
-}
-
-#[tauri::command]
-fn reset_config() -> Result<backend::Config, String> {
-    backend::reset_config().map_err(|e| e.to_string())
+    // Unlike read_config(), self-heals a missing/broken config.json by writing a fresh default
+    // one to disk - see backend::reload_config() (M7: replaces the removed Reset Config button).
+    backend::reload_config()
 }
 
 #[tauri::command]
@@ -121,20 +116,7 @@ fn open_config_folder(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn open_config_file(app: AppHandle) -> Result<(), String> {
-    let path = backend::config_path().ok_or("no platform config directory")?;
-    if !path.exists() {
-        // Nothing to open yet - write the defaults first so there's a real file to show
-        // (this is exactly what reset_config() does, reused here for the same reason).
-        backend::reset_config().map_err(|e| e.to_string())?;
-    }
-    app.opener()
-        .open_path(path.to_string_lossy().into_owned(), None::<String>)
-        .map_err(|e| e.to_string())
-}
-
-/// Not one of docs/IPC_SPEC.md's 9 commands - a small addition so the frontend can pull the
+/// Not one of docs/IPC_SPEC.md's 7 commands - a small addition so the frontend can pull the
 /// CLI/file-association path once on startup (pull, not push, avoids any race with page load;
 /// same shape as the `?file=` query param Dev mode already uses).
 #[tauri::command]
@@ -181,9 +163,7 @@ pub fn run() {
             unwatch_file,
             read_config,
             reload_config,
-            reset_config,
             open_config_folder,
-            open_config_file,
             get_initial_path,
         ])
         .build(tauri::generate_context!())

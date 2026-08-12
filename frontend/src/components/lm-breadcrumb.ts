@@ -42,6 +42,11 @@ export class LmBreadcrumb extends HTMLElement {
     this.render();
     if (id) {
       this.show();
+    } else {
+      // No heading to show a path for (e.g. scrolled back above the first heading) - hide right
+      // away instead of leaving an empty toast up until whatever hide timer a previous, now-stale
+      // activation happened to leave running.
+      this.hide();
     }
   }
 
@@ -52,6 +57,11 @@ export class LmBreadcrumb extends HTMLElement {
       this.classList.remove('lm-breadcrumb-visible');
       this.hideTimer = null;
     }, VISIBLE_MS);
+  }
+
+  private hide(): void {
+    this.clearHideTimer();
+    this.classList.remove('lm-breadcrumb-visible');
   }
 
   private clearHideTimer(): void {

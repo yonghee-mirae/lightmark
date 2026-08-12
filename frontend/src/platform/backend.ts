@@ -35,8 +35,6 @@ export interface BackendApi {
   readConfig(): Promise<Config>;
   reloadConfig(): Promise<Config>;
   openConfigFolder(): Promise<void>;
-  openConfigFile(): Promise<void>;
-  resetConfig(): Promise<Config>;
   // Optional: only TauriBackend implements these. There's no "open on startup" concept in
   // Web/Dev - Dev mode gets the same job done via the `?file=` query param directly in main.ts.
   getInitialPath?(): Promise<string | null>;
