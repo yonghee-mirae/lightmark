@@ -18,6 +18,7 @@ pub struct Config {
     pub breadcrumb_visible: bool,
     pub syntax_highlight: bool,
     pub mermaid: bool,
+    pub mermaid_theme: String,
     pub katex: bool,
     pub auto_reload: bool,
     pub print_use_light_theme: bool,
@@ -28,16 +29,17 @@ impl Default for Config {
         Config {
             theme: "github-light".to_string(),
             custom_css: String::new(),
-            font_family: "Pretendard".to_string(),
-            code_font_family: "JetBrains Mono".to_string(),
+            font_family: "sans-serif".to_string(),
+            code_font_family: "monospace".to_string(),
             zoom: 100,
             toc_visible: true,
             breadcrumb_visible: true,
             syntax_highlight: true,
             mermaid: true,
+            mermaid_theme: "auto".to_string(),
             katex: true,
             auto_reload: true,
-            print_use_light_theme: false,
+            print_use_light_theme: true,
         }
     }
 }

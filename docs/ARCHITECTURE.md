@@ -14,6 +14,7 @@ Packaging: Tauri
 ## Structure
 ```text
 Cargo.toml             # workspace: backend, src-tauri
+package.json           # @tauri-apps/cli만 — frontend/package.json은 Tauri를 모른다
 backend/               # Tauri 비의존 (순수 로직 + dev server binary)
 src-tauri/             # Tauri IPC 바인딩 (얇은 셸, 로직 없음)
 frontend/

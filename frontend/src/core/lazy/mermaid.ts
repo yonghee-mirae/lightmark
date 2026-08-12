@@ -3,6 +3,7 @@
 // live reload) reuse the already-loaded module instead of importing it again.
 
 import { renderWarning } from './warning';
+import { isLightTheme } from '../theme';
 
 let mermaidPromise: Promise<typeof import('mermaid')> | null = null;
 
@@ -13,7 +14,33 @@ function loadMermaid(): Promise<typeof import('mermaid')> {
 
 let nextDiagramId = 0;
 
-export async function renderMermaid(container: ParentNode): Promise<void> {
+// Mermaid ships its own theme names ('default', 'dark', 'forest', 'neutral', 'base') - unlike
+// Shiki, it doesn't recognize docs/CONFIG_SPEC.md's 'github-light'/'github-dark' directly, so by
+// default this picks mermaid's theme from `theme` the same way `theme.ts` does for the rest of
+// the app (`isLightTheme` - an unrecognized/custom `theme` value lands on 'dark' here exactly
+// like it does for the rest of the app, instead of the two disagreeing).
+//
+// `mermaidThemeSetting` (config's `mermaidTheme`, docs/CONFIG_SPEC.md) is the escape hatch for
+// when that guess is wrong: `customCss` can repaint the app a different color scheme than
+// `theme` says (e.g. `theme: 'github-light'` with `customCss` overriding the color variables to a
+// dark palette), and there is no way to detect that from `theme` alone - only the user configuring
+// it explicitly can. `'light'`/`'dark'` force mermaid's choice regardless of `theme`; anything
+// else (`'auto'`, unset, a typo) keeps the automatic `theme`-based guess.
+export function mermaidThemeOf(appTheme: string, mermaidThemeSetting: string): 'default' | 'dark' {
+  if (mermaidThemeSetting === 'light') {
+    return 'default';
+  }
+  if (mermaidThemeSetting === 'dark') {
+    return 'dark';
+  }
+  return isLightTheme(appTheme) ? 'default' : 'dark';
+}
+
+export async function renderMermaid(
+  container: ParentNode,
+  appTheme: string,
+  mermaidThemeSetting: string,
+): Promise<void> {
   const blocks = Array.from(
     container.querySelectorAll<HTMLElement>('pre > code.language-mermaid'),
   );
@@ -22,7 +49,7 @@ export async function renderMermaid(container: ParentNode): Promise<void> {
   }
 
   const { default: mermaid } = await loadMermaid();
-  mermaid.initialize({ startOnLoad: false });
+  mermaid.initialize({ startOnLoad: false, theme: mermaidThemeOf(appTheme, mermaidThemeSetting) });
 
   for (const block of blocks) {
     const pre = block.parentElement;

@@ -15,15 +15,25 @@ export interface FileDropDetail {
 }
 
 export interface ActiveHeadingDetail {
-  id: string;
+  id: string | null;
 }
 
-// Which lazy-loaded renderers to run for this document (docs/PLAN.md M4). `theme` is only used
-// by the syntax highlighter (Shiki ships themes literally named 'github-light'/'github-dark',
-// matching docs/CONFIG_SPEC.md's `theme` values).
+// A heading genuinely at the very top of the document still renders with its top offset from
+// the pane's own top edge by lm-viewer's `padding: 1rem` (see styles/layout.css) - a few extra px
+// of slack absorbs any margin-collapse rounding on top of that. Anything past this is real
+// preceding content (a paragraph, etc.), not just box-model offset, and should NOT count as
+// "reached" yet.
+const TOP_TOLERANCE_PX = 24;
+
+// Which lazy-loaded renderers to run for this document (docs/PLAN.md M4). `theme` is passed to
+// both the syntax highlighter (Shiki ships themes literally named 'github-light'/'github-dark',
+// matching docs/CONFIG_SPEC.md's `theme` values) and Mermaid (which maps it to its own theme
+// names via `mermaidThemeOf` - see core/lazy/mermaid.ts). `mermaidTheme` is the escape hatch for
+// when `customCss` repaints the app a different color scheme than `theme` alone would suggest.
 export interface RenderOptions {
   theme: string;
   mermaid: boolean;
+  mermaidTheme: string;
   katex: boolean;
   syntaxHighlight: boolean;
 }
@@ -31,6 +41,9 @@ export interface RenderOptions {
 export class LmViewer extends HTMLElement {
   private observer: IntersectionObserver | null = null;
   private activeId: string | null = null;
+  // Forces the next setActive() call to dispatch even if it computes the same value the
+  // previous document happened to leave behind (most commonly: both null) - see setContent().
+  private freshDocumentPending = false;
 
   connectedCallback(): void {
     this.renderEmpty();
@@ -47,6 +60,7 @@ export class LmViewer extends HTMLElement {
   setContent(html: string, headings: Heading[], options: RenderOptions): void {
     this.observer?.disconnect();
     this.activeId = null;
+    this.freshDocumentPending = true;
     this.replaceChildren();
 
     const article = document.createElement('div');
@@ -56,10 +70,10 @@ export class LmViewer extends HTMLElement {
     handleBrokenImages(article);
 
     this.observeHeadings();
-    const first = headings[0];
-    if (first) {
-      this.setActive(first.id);
-    }
+    // Geometry, not "always the first heading": if the document opens with prose before its
+    // first heading, that heading hasn't been reached yet and nothing should be active - see
+    // computeActiveHeadingId().
+    this.setActive(this.computeActiveHeadingId());
 
     void this.enhance(article, options);
   }
@@ -70,7 +84,7 @@ export class LmViewer extends HTMLElement {
   // existence check lives inside each lazy/*.ts function, not here.
   private async enhance(article: HTMLElement, options: RenderOptions): Promise<void> {
     if (options.mermaid) {
-      await renderMermaid(article);
+      await renderMermaid(article, options.theme, options.mermaidTheme);
     }
     if (options.syntaxHighlight) {
       await highlightCode(article, options.theme);
@@ -122,32 +136,36 @@ export class LmViewer extends HTMLElement {
   // 'enter' never fires and the active heading falls behind. `scrollend` fires once per scroll
   // gesture (not per frame), so reconciling here catches up without becoming a per-frame handler.
   private reconcileActiveHeading = (): void => {
+    this.setActive(this.computeActiveHeadingId());
+  };
+
+  // The last heading whose top has actually passed the pane's top edge (within
+  // TOP_TOLERANCE_PX), or null if none has - i.e. we're still above/before the first heading
+  // (either genuinely at the top of the document with no headings reached yet, or there are no
+  // headings at all). Used both right after loading a document and by the scrollend fallback
+  // above, so both agree on exactly the same geometry.
+  private computeActiveHeadingId(): string | null {
     const headingEls = this.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6');
-    const firstHeading = headingEls[0];
-    if (!firstHeading) {
-      return;
+    if (headingEls.length === 0) {
+      return null;
     }
-    // Default to the first heading: if none has passed the top (e.g. scrolled all the way back
-    // to the very start of the document, where the first heading sits just below the top edge
-    // because of lm-viewer's own padding), that's the correct answer, not "leave it as-is".
     const paneTop = this.getBoundingClientRect().top;
-    let active = firstHeading;
+    let active: HTMLElement | null = null;
     for (const el of headingEls) {
-      if (el.getBoundingClientRect().top - paneTop <= 0) {
+      if (el.getBoundingClientRect().top - paneTop <= TOP_TOLERANCE_PX) {
         active = el;
       } else {
         break;
       }
     }
-    if (active.id) {
-      this.setActive(active.id);
-    }
-  };
+    return active?.id || null;
+  }
 
-  private setActive(id: string): void {
-    if (id === this.activeId) {
+  private setActive(id: string | null): void {
+    if (id === this.activeId && !this.freshDocumentPending) {
       return;
     }
+    this.freshDocumentPending = false;
     this.activeId = id;
     this.dispatchEvent(
       new CustomEvent<ActiveHeadingDetail>('lm-active-heading', {
@@ -162,10 +180,23 @@ export class LmViewer extends HTMLElement {
     return this.activeId;
   }
 
-  // Live reload's scroll anchor (docs/PLAN.md M5): after a re-render, jump back to the heading
-  // that was active before the reload instead of snapping to the top of the document.
-  scrollToHeading(id: string): void {
+  // Used for live reload's scroll anchor (docs/PLAN.md M5: jump back to the heading that was
+  // active before the reload instead of snapping to the top) and for TOC clicks (docs/PLAN.md
+  // M2: a click needs *some* way to update the active heading even when scrollIntoView causes no
+  // actual scroll - e.g. the target is one of several headings already visible at the very end
+  // of a short document - which would otherwise mean no scroll/scrollend event ever fires to
+  // update it).
+  //
+  // Deliberately does NOT force `id` itself to become active: scrollIntoView({block: 'start'})
+  // can't push a heading past the end of the document, so if `id` is near the bottom of a short
+  // document it may settle somewhere other than the very top of the pane - in that case the
+  // heading that's actually topmost on screen should end up active, same as if the user had
+  // scrolled there by hand, not whichever heading happened to be clicked. Recomputing by
+  // geometry after the scroll (rather than trusting `id`) gives exactly that, and still reduces
+  // to "the clicked heading" in the normal case where it does land at the top.
+  focusHeading(id: string): void {
     this.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: 'start' });
+    this.setActive(this.computeActiveHeadingId());
   }
 
   private handleDragOver = (event: DragEvent): void => {

@@ -28,6 +28,13 @@
 - [x] Adapter Layer (Web / Dev / Tauri) — Tauri는 M6에서
 
 ## Milestone 6
-- [ ] Tauri Integration
-- [ ] Packaging
+- [x] Tauri Integration
+
+## Milestone 7
+- [ ] TOC Toggle
+- [ ] Zoom
+- [ ] About
+
+## Milestone 8
+- [ ] Packaging — AppImage 패키징은 별도 진행(fuse/patchelf 미설치)
 - [ ] Release

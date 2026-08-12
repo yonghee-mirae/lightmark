@@ -33,10 +33,11 @@ lightmark/
   backend/
     Cargo.toml                # feature "dev-server" (기본 off)
     src/
-      lib.rs                  # pub use file, watcher, config
+      lib.rs                  # pub use file, watcher, config, state
       file.rs                 # read_file, 인코딩/개행 정규화
       watcher.rs              # notify 래핑 + 디바운스
       config.rs               # 기본값, 병합, 경로 해석
+      state.rs                # state.json(config.json과 별도) - Open 다이얼로그 마지막 위치 기억 (M6)
       bin/devserver.rs        # #[cfg(feature = "dev-server")] axum + SSE
   src-tauri/
     Cargo.toml
@@ -128,7 +129,11 @@ export type Unwatch = () => void;
 **활성 heading 추적 (구현 후 확정된 설계)**: `lm-viewer`가 `IntersectionObserver`로 담당하고 `lm-toc`/`lm-breadcrumb`은 `lm-active-heading` 이벤트를 받아 하이라이트만 한다. 세부 구현은 계획보다 한 단계 더 정교해졌다 — 단순 "상단 N% 영역에 들어오면 활성" 방식은 실측 결과 어긋났다:
 - **root/밴드**: `root: this`(lm-viewer는 자체 스크롤 컨테이너이므로 window가 아니라 자기 자신 기준), `rootMargin: '0px 0px -98% 0px'`로 pane 상단에 얇은(2%) trip-wire를 둔다.
 - **enter만 신뢰**: heading이 trip-wire에 **진입(enter)**하는 순간만 활성 신호로 쓰고 **exit는 무시**한다. exit는 heading이 자기 줄 높이만큼 화면 위로 완전히 사라져야 발생해서, 이걸 근거로 다음 heading으로 넘기면 항상 늦게 전환된다.
-- **`scrollend` 보정**: 트랙패드 플링 등 아주 빠른 스크롤은 두 intersection 샘플 사이에 heading이 trip-wire를 통째로 건너뛸 수 있다. `lm-viewer`에 `scrollend`(스크롤 제스처당 1회, 프레임마다 도는 핸들러 아님) 리스너를 달아 이때만 실제 좌표(`getBoundingClientRect`)로 "top을 지난 마지막 heading"을 재계산해 보정한다. 이 보정은 첫 heading을 기본값으로 두어야 한다 — 문서 맨 위로 스크롤했을 때 어떤 heading도 "top을 지났다"는 조건을 만족하지 못하는 경우(padding 때문에 top이 정확히 0이 아님)를 이전 상태 유지가 아니라 첫 heading으로 되돌리기 위함.
+- **`scrollend` 보정**: 트랙패드 플링 등 아주 빠른 스크롤은 두 intersection 샘플 사이에 heading이 trip-wire를 통째로 건너뛸 수 있다. `lm-viewer`에 `scrollend`(스크롤 제스처당 1회, 프레임마다 도는 핸들러 아님) 리스너를 달아 이때만 실제 좌표(`getBoundingClientRect`)로 "top을 지난 마지막 heading"을 재계산해 보정한다.
+- **버그 수정(사용자 리포트, M6 테스트 중 발견): 첫 heading 앞에 본문이 있으면 문서를 열거나 맨 위로 스크롤했을 때 그 heading이 잘못 focus됨.** 처음엔 "top을 지난 heading이 하나도 없으면 첫 heading을 기본값으로" 했는데(padding 때문에 첫 heading의 top이 정확히 0이 아닌 경우를 보정하려는 의도였음), 이게 "첫 heading 앞에 본문이 실제로 있어서 아직 그 heading에 도달 안 한 경우"와 구분이 안 됐다 — 두 경우 다 "top을 지난 heading 없음"으로 관측되기 때문. 수정: 기본값을 "첫 heading"에서 **"없음(null)"**으로 바꾸고, `top <= 0` 대신 `top <= TOP_TOLERANCE_PX`(24px, `lm-viewer`의 `padding: 1rem`+여유분)로 완화했다 — 이러면 진짜로 맨 위에 있는 첫 heading(패딩만큼만 밀려있음)은 여전히 잡히고, 본문이 실제로 몇 줄 이상 앞서는 경우(패딩보다 훨씬 큰 오프셋)는 정확히 걸러진다. `lm-viewer.ts`의 `computeActiveHeadingId()`로 이 로직을 `setContent()`(문서 로드 시)와 `reconcileActiveHeading()`(scrollend) 둘 다 공유하도록 합쳤다 — 이제 두 경로가 다른 기준으로 계산할 일이 없음. `ActiveHeadingDetail.id`/`lm-toc`·`lm-breadcrumb`의 `setActive`는 이미 `string | null`을 받도록 돼 있어서(구현할 때부터 그렇게 짜여 있었음) 프론트 쪽엔 이 변경이 자연스럽게 흘러들어갔다.
+- **버그 수정(사용자 리포트): 문서 끝에 여러 heading이 한 화면에 다 보이는 상태에서 TOC의 다른 heading을 클릭해도 focus/breadcrumb가 안 바뀜.** "활성 heading" 추적이 전부 스크롤(IntersectionObserver enter, 또는 scrollend 보정)에 의존하는데, 클릭한 heading이 문서 끝이라 이미 화면에 다 보이는 상태면 앵커 이동이 실제 스크롤을 전혀 유발하지 않는다(이미 최대 스크롤 위치) — 그러면 `scroll`/`scrollend` 이벤트 자체가 안 나서 활성 상태를 갱신할 트리거가 없다. 수정: `lm-toc`가 링크 클릭을 직접 감지해서(`href`의 `#id`를 읽어) `lm-toc-select` 이벤트를 디스패치하고, `main.ts`가 이걸 받아 `viewer.focusHeading(id)`를 호출.
+  - **1차 시도(사용자가 바로 정정): `focusHeading`이 클릭한 `id`를 무조건 활성으로 강제.** 문서 끝이라 `scrollIntoView`로도 그 heading을 화면 맨 위까지 끌어올릴 수 없는 경우(더 스크롤할 내용이 없음), 클릭한 heading이 화면 중간/아래쯔음에 머무는데도 그게 활성으로 표시돼서 어색했다 — 게다가 그 상태에서 살짝만 스크롤해도 (원래 규칙대로) 화면 맨 위 heading으로 활성이 확 바뀌어서 일관성이 없어 보였다.
+  - **수정(확정)**: `focusHeading`이 클릭한 `id`를 강제하지 않고, `scrollIntoView` 이후 **`computeActiveHeadingId()`로 다시 계산**해서 그 결과를 활성으로 설정한다 — 일반적인 경우(heading이 화면 맨 위까지 잘 올라간 경우)는 결국 클릭한 heading과 같은 결과가 나오지만, 문서 끝처럼 맨 위까지 못 올라가는 경우엔 "현재 화면에서 실제로 맨 위에 있는 heading"이 선택돼서, 스크롤로 도달했을 때와 완전히 같은 규칙을 따르게 된다.
 
 **Breadcrumb는 고정 행이 아니라 Viewer 영역 상단의 토스트다 (UI 변경으로 확정).** 처음엔 항상 보이는 고정 높이 행(`#app` grid의 별도 row)으로 두었으나, 이후 "구분된 영역보다는 떠 있는 알림창 느낌"을 원하는 요구로 바꿨다: `#app` grid에서 breadcrumb 전용 row를 없애고, `lm-breadcrumb`를 `lm-viewer`와 함께 `.lm-viewer-pane`(`position: relative`) 안에 넣어 `position: absolute`로 얹었다. `lm-active-heading` 이벤트로 활성 heading이 바뀔 때만(`lm-viewer`가 동일 id 재호출을 이미 걸러내므로 매 이벤트가 실제 변경) 페이드인하고 1.5초 뒤 자동 페이드아웃한다(연속 변경 시 타이머 리셋). 폭 축약(전체 체인이 넘치면 `First > ... > Last`, 그래도 넘치면 First/Last 각각 CSS `text-overflow: ellipsis`) 로직은 그대로다. 축약 여부는 축소되지 않는 상태로 전체 체인을 렌더해 `scrollWidth`가 실제로 넘치는지 측정해서 판단(JS로 글자 수를 계산하지 않음)하고, 측정 기준은 Viewer 영역 폭(TOC는 침범하지 않음)이다. `ResizeObserver`로 폭 변화에 재계산한다.
 
@@ -150,10 +155,16 @@ export type Unwatch = () => void;
 - 계획대로 전부 `core/theme.ts` 한 파일에 둔다(디렉토리 구조 문서와 동일). `computeCssVars(config)`는 순수 함수(테마 토큰/폰트 스택/줌 계산)라 Vitest로 검증하고, `applyTheme(config, root?)`만 `root.style.setProperty`로 `:root` 변수를 주입하고 `<style id="lm-custom">`을 통째로 교체하는 DOM 부수효과를 담당한다 — M2의 `markdown.ts`(순수) vs `lm-viewer.ts`(DOM)와 같은 분리 원칙.
 - `main.ts`에서 시작 시 `backend.readConfig()` 결과로 `applyTheme()`을 1회 호출. `WebBackend.readConfig()`는 항상 `DEFAULT_CONFIG`를 즉시 resolve하는 마이크로태스크라 첫 페인트 전에 끝나 깜빡임이 없다(실측: M5 이전에는 Web 모드에서 config.json을 실제로 읽지 않으므로 이 값이 사실상 유일한 소스).
 - **`!important`가 필요한 이유**: `printUseLightTheme`는 `<html>`에 `.lm-print-light` 클래스를 토글해 인쇄 시 라이트 테마로 강제하는데, 같은 `<html>`에 `applyTheme`이 인라인 `style`로 색상 변수를 이미 주입해 두었다. 인라인 스타일은 그 자체로 대부분의 스타일시트 규칙보다 우선하므로, `@media print { .lm-print-light { ... } }`의 값에 `!important`를 붙이지 않으면 인쇄 시에도 인라인 값이 그대로 이겨 라이트 테마 강제가 무효화된다.
+- **버그 수정(사용자 리포트, M6 테스트 중 발견): PDF로 인쇄하면 문서 전체가 아니라 화면에 보이던 한 화면 분량만 나옴.** `#app`(`height: 100vh`)/`.lm-content`(`overflow: hidden`)/`lm-viewer`(`overflow-y: auto`, `flex: 1`)는 전부 화면에서 스크롤 가능한 고정 높이 패널을 만들기 위한 규칙인데, `@media print`가 툴바/TOC/상태바를 숨기는 것만 하고 이 높이/overflow 제약은 그대로 둬서, 인쇄 시에도 브라우저가 "화면에 보이는 한 뷰포트 분량"만 렌더링했다. 수정: `@media print`에서 `#app`은 `height: auto`, `.lm-content`/`.lm-viewer-pane`/`lm-viewer`는 `overflow: visible`(+`lm-viewer`는 `height: auto`)로 재정의해서 전체 문서가 여러 페이지에 걸쳐 자연스럽게 흐르도록 함. `.lm-content`의 `grid-template-columns`도 TOC가 숨겨진 만큼 1열로 좁힘(TOC 칸 너비만큼 빈 공간이 남는 걸 방지).
 - 폰트: `fontFamily`/`codeFontFamily`가 공백을 포함하면(`JetBrains Mono` 등) CSS `font-family` 목록 규칙상 반드시 quote 처리해야 해서 `buildFontStack`이 공백 포함 여부로 분기한다.
 - Zoom: `--lm-zoom`(줌 퍼센트/100)을 `.lm-markdown`에만 `font-size: calc(1rem * var(--lm-zoom))`로 적용한다. 툴바/상태바는 이 변수를 참조하지 않으므로 별도 처리 없이 요구사항("툴바/상태바 크기 고정")을 만족한다.
 - **결정: 툴바 Zoom 버튼 배선은 M5 이후로 미룬다.** M3는 CSS/변수 경로(config → `--lm-zoom` → 레이아웃)만 범위로 하고, 그 값을 사용자가 직접 바꾸는 UI는 다루지 않는다. 이유: Web 모드에서 `WebBackend.readConfig()`는 항상 `DEFAULT_CONFIG`만 반환해 config.json이 실제로 읽히지 않으므로(M5 "Config System"에서 해결), 지금 버튼을 배선해도 값을 저장/반영할 실제 대상이 없다. 검증("zoom 50~200% 레이아웃 정상")은 이번엔 `DEFAULT_CONFIG.zoom`을 코드에서 임시로 바꿔 눈으로 확인하는 방식으로 대체했다 — M5에서 Config System이 붙으면 그때 툴바 Zoom 버튼을 실제로 배선한다.
 - **버그 수정: `--lm-color-border`를 텍스트 색으로 재사용하면 안 됨.** `lm-viewer`의 빈 상태 안내문(`.lm-empty`)이 `--lm-color-border`를 글자색으로 썼는데, border는 divider용 저대비 색이라 dark 테마(`#30363d` on `#0d1117`)에서 거의 안 보였다. 별도의 `--lm-color-muted`(secondary text) 토큰을 테마별로 추가(`github-light: #656d76`, `github-dark: #8b949e`)해 `.lm-empty`가 이걸 쓰도록 수정. `tokens.css`의 pre-JS 기본값에도 동일하게 추가.
+- **버그 수정(사용자 리포트, M6 테스트 중 발견, 확정): Tauri(WebKitGTK)에서 글자가 두꺼워 보임.** `fc-match`로 직접 확인: 이 환경엔 `fontFamily` 기본값 `Pretendard`가 설치돼 있지 않고, `system-ui`/`sans-serif`조차 이 시스템에 설치된 유일한 sans 폰트(`Noto Sans`)로 매칭된다 — 즉 폰트 자체나 `font-weight`(devtools로 미지정=normal 확인) 문제가 아니라, **같은 폰트/굵기/크기인데도 WebKitGTK가 Chromium보다 텍스트를 더 두껍게 래스터라이즈하는** 엔진 차이.
+  - 중간 시행착오: `.lm-markdown`(뷰어)에만 좁게 적용 → 뷰어는 좋아졌는데 사용자가 "TOC가 굵어졌다"고 리포트 → "상대적 착시"로 잘못 판단해 넘어갔다가 사용자가 강하게 정정(TOC는 원래 정상이었음). 정확한 인과관계(형제 서브트리인 `.lm-markdown`이 `lm-toc`에 영향을 줄 CSS 상속 경로가 없음)는 끝내 설명 못 했지만, 매번 Tauri 앱을 완전히 재시작하며 재확인한 결과 최종적으로 `html, body`(전체 적용)에서 뷰어/TOC 둘 다 정상으로 확인됨.
+  - 수정: `html, body`에 `-webkit-font-smoothing: antialiased` + `-moz-osx-font-smoothing: grayscale` — 앱 전체에 상속으로 한 번에 적용. Chromium/Firefox는 대부분 무시하므로 회귀 위험 없음.
+  - **알려진 업스트림 이슈, 참고용**: [tauri-apps/tauri#14286](https://github.com/tauri-apps/tauri/issues/14286) — WebKitGTK(Linux)가 지정된 font-weight보다 약 +100 무겁게 렌더링하는, 아직 미해결인 업스트림 버그(computed style은 정상인데 실제 래스터라이즈만 두꺼움 — 우리가 겪은 증상과 일치). 이 이슈와 [관련 정리 글](https://medium.com/@dasunnimantha777/fonts-render-too-bold-in-rust-tauri-wails-on-linux-a-webkitgtk-bug-and-how-to-fix-it-8b6a0b27b613)은 둘 다 "스크롤/overflow/compositing과 무관하다"고 명시하는데, 우리가 관찰한 "TOC에 스크롤바가 생길 때만 굵어짐" 현상은 여기 안 나온 별개 각도라 완전히 설명되진 않음. 이 글이 제시하는 "정식" 해결법은 weight 300 폰트를 직접 번들링해 `@font-face`로 등록하고 일부러 더 가벼운 weight를 지정해 +100 오프셋을 상쇄하는 것인데, 이건 `CLAUDE.md`의 "웹폰트 번들 금지" 원칙과 충돌해서 적용 안 함 — 지금은 `-webkit-font-smoothing`만으로 사용자가 정상으로 확인해서 여기서 멈춤. 증상이 재발하면 이 트레이드오프를 다시 검토.
+- **개선(사용자 요청): 기본 config 값 변경.** `fontFamily`/`codeFontFamily` 기본값을 `Pretendard`/`JetBrains Mono`(둘 다 이 환경엔 설치돼 있지 않음, 위 WebKitGTK 폰트 굵기 조사에서 `fc-match`로 확인)에서 제네릭 CSS 키워드 `sans-serif`/`monospace`로 변경 — `buildFontStack`이 이미 시스템 폰트 스택 뒤에 붙이는 구조라 동작은 그대로(`sans-serif, system-ui, ...`처럼 중복되지만 해롭지 않음), 설치돼 있을 필요가 없는 값으로 바뀐 것뿐. `printUseLightTheme` 기본값도 `false`→`true`로 변경(다크 테마로 인쇄해도 항상 라이트로 강제). `frontend/src/types/config.ts`(`DEFAULT_CONFIG`)/`backend/src/config.rs`(`Config::default()`)/`docs/CONFIG_SPEC.md`(스키마 예시) 세 곳 동시 수정 — 세 군데가 항상 값이 같아야 한다는 기존 설계(`config.rs` 파일 상단 주석) 그대로 유지.
 
 ---
 
@@ -184,6 +195,10 @@ Config의 `mermaid`/`katex`/`syntaxHighlight`가 false면 import 자체를 하�
   - `core/markdown.ts`: `lm_image_attrs`라는 core 룰을 추가해 모든 `image` 토큰에 `loading="lazy"`와 `class="lm-image"`를 부여(task list/heading id 룰과 같은 패턴 — 렌더러를 새로 만들지 않고 토큰에 속성만 얹음).
   - `layout.css`: `.lm-image { max-width: 100%; height: auto; }`로 뷰어보다 큰 원본 이미지가 폭을 뚫고 나가지 않게 함.
   - `core/images.ts`(신규, `core/lazy/`가 아님 — 임포트할 외부 라이브러리가 없어서 지연 로딩 패턴이 필요 없음): `<img>`마다 `error` 이벤트를 1회 리스닝해서, 실제로 로드에 실패하면 브라우저 기본 "깨진 이미지" 아이콘 대신 `.lm-render-warning-inline`(mermaid/KaTeX와 동일한 경고 스타일)로 교체. `lm-viewer.ts`의 `setContent()`에서 HTML을 심은 직후 동기적으로 호출(비동기 `enhance()`보다 먼저 — 에러 리스너는 이미지 로드가 시작되기 전에 붙어 있어야 함).
+- **버그 수정(사용자 리포트): `theme`을 `github-dark`로 바꾸면 mermaid 다이어그램 선이 잘 안 보임.** `mermaid.initialize()`가 `theme` 옵션 없이 호출되고 있어서 앱 테마와 무관하게 항상 mermaid 기본 테마(`default` — 밝은 배경을 전제로 짙은 글자/선)로 렌더링됐던 게 원인. 위 185번째 줄의 "Shiki는 우리 `theme` 값과 내장 테마 이름이 그대로 일치해서 매핑이 필요 없다"는 mermaid에는 적용되지 않는다 — mermaid는 자체 테마 이름 체계(`default`/`dark`/`forest`/`neutral`/`base`)를 쓴다. 수정: `core/lazy/mermaid.ts`에 순수 함수 `mermaidThemeOf(appTheme)`을 추가해서 `mermaid.initialize({ startOnLoad: false, theme: mermaidThemeOf(appTheme) })`로 전달. `renderMermaid(container, appTheme)`으로 시그니처 변경, 호출부(`lm-viewer.ts`의 `enhance()`)는 이미 갖고 있던 `options.theme`을 그대로 넘겨주기만 하면 됨.
+  - **후속 질문(사용자): 사용자가 커스텀 테마를 지정한 경우는?** `config.theme`은 그냥 문자열이라(`config.rs`도 검증 없음) `github-light`/`github-dark`가 아닌 임의 값을 넣을 수 있는데, `theme.ts`의 `resolveThemeTokens`는 그런 미인식 값을 전부 다크 토큰으로 폴백한다. 처음 짠 `mermaidThemeOf`는 `appTheme === 'github-dark'`만 `'dark'`로 취급하고 **그 외 전부(미인식 값 포함) `'default'`**로 보내서, 미인식/커스텀 테마 이름을 썼을 때 앱 전체는 다크인데 mermaid만 라이트로 어긋나는 같은 버그가 재발할 뻔했다. 수정: `theme.ts`에 `isLightTheme(theme)`(`theme === 'github-light'`인지만 확인)를 export하고 `resolveThemeTokens`도 이걸로 다시 쓰게 해서 폴백 로직의 단일 소스로 만든 뒤, `mermaidThemeOf`가 이걸 가져와 씀(`isLightTheme(appTheme) ? 'default' : 'dark'`) — 이제 미인식/커스텀 이름은 앱 전체와 mermaid가 항상 같은 방향(다크)으로 폴백한다.
+  - **재질문(사용자): `customCss`로 배색을 바꾼 경우 mermaid의 라이트/다크를 별도로 지정할 수 있어야 하지 않나?** 맞는 지적 — `mermaidThemeOf`가 `theme` 값만 보고 자동으로 라이트/다크를 고르는데, `customCss`(`<style id="lm-custom">`)는 우리 CSS 변수/셀렉터만 덮어쓸 뿐 `theme` 필드 자체는 그대로라서, `customCss`로 실제 배색을 뒤집어도 `mermaidThemeOf`는 그걸 알 방법이 없다(mermaid는 렌더링 시점에 SVG 내부에 색을 직접 구워서 반환하므로 `customCss`가 사후에 mermaid 색을 덮어쓸 수도 없음 — 자동 감지가 유일한 경로). 그래서 자동 감지를 대체할 명시적 설정을 신설: **`CONFIG_SPEC.md`에 `mermaidTheme` 필드 추가**(`"auto"`(기본값)/`"light"`/`"dark"`) — `"light"`/`"dark"`는 `theme` 값과 무관하게 mermaid 선택을 강제하고, 그 외(`"auto"`, 미설정, 오타)는 기존 `theme` 기반 자동 감지를 그대로 유지. `mermaidThemeOf(appTheme, mermaidThemeSetting)`으로 파라미터 추가, `renderMermaid`/`RenderOptions`/`main.ts`의 `loadFile()`까지 값을 그대로 흘려보냄.
+  - `mermaidThemeOf`/`isLightTheme` 둘 다 순수 함수라 Vitest로 각각 6개/해당 분기 테스트(auto 3분기 + 명시적 light/dark 강제 2개 + 미인식 설정값이 auto와 동일하게 처리되는지 1개).
 
 ---
 
@@ -222,20 +237,68 @@ Config의 `mermaid`/`katex`/`syntaxHighlight`가 false면 import 자체를 하�
 - **`platform/dev.ts`**: `IPC_SPEC.md`의 Dev Server 표에 `open_file` 행이 없다는 걸 근거로 `openFile()`은 미지원(reject)으로 처리 — 대신 실제 파일은 `readFile(path)`(→ `GET /api/file?path=`)로 열고, 그 경로는 **main.ts가 `?file=` URL 쿼리 파라미터로 받는다**(브라우저에는 네이티브 열기 다이얼로그가 없으므로). `openConfigFolder`/`openConfigFile`도 표의 "미지원(capabilities.configFile=false)"대로 reject.
 - **`createBackend()`가 비동기로 바뀜**: 계획대로 헬스체크(`GET /api/health`, 300ms 타임아웃)로 Dev 모드를 판별해야 하는데 이건 본질적으로 비동기라, `platform/backend.ts`의 팩토리를 `Promise<BackendApi>`로 바꾸고 `main.ts` 최상단에서 top-level `await`로 받는다(`tsconfig`가 `target: ES2022`라 모듈 최상위 await가 바로 동작). Tauri 분기(`window.__TAURI_INTERNALS__`)는 M6에서 `platform/tauri.ts`가 생기면 추가 — 지금은 Dev/Web 둘만 분기.
 - **Live reload 스크롤 앵커**: `lm-viewer.ts`에 `getActiveId()`/`scrollToHeading(id)`를 공개 메서드로 추가. `main.ts`의 `reloadFile()`이 재렌더 전에 `getActiveId()`로 현재 활성 heading을 저장했다가, 재렌더 후 `scrollToHeading()`으로 같은 heading으로 되돌린다.
+- **버그 수정(사용자 리포트, M6 Reload Config 배선 이후): `mermaidTheme`(및 사실상 `mermaid`/`katex`/`syntaxHighlight`/`theme`이 Shiki 코드 색에 주는 영향)을 config.json에서 바꾼 뒤 Reload Config를 눌러도 반영이 안 되고 앱을 다시 시작해야만 반영됨.** `main.ts`의 `lm-reload-config`/`lm-reset-config` 핸들러는 `currentConfig` 갱신 + `applyTheme(config)` 호출까지만 하는데, `applyTheme`은 CSS 변수/`.lm-print-light` 클래스/`customCss`만 갱신하는 함수라 — 이런 것들(색상/폰트/zoom/printUseLightTheme)은 실시간으로 반영되지만, mermaid/Shiki처럼 **렌더링 시점에 결과를 DOM/SVG에 직접 구워 넣는(bake)** 값은 `enhance()`가 다시 호출(=문서를 다시 렌더)돼야만 바뀐다. `enhance()`는 `loadFile()`이 호출될 때만 실행되는데 Reload/Reset Config는 `loadFile()`을 전혀 안 부르니, 이미 열려 있는 문서는 그대로 남아있었다 — 앱을 재시작(다시 파일을 열게 됨)해야만 우연히 반영되는 것처럼 보였을 뿐. 이건 한계가 아니라 누락된 배선이라고 판단해 수정: `main.ts`에 현재 열려 있는 문서의 원본(raw) 내용을 저장해두는 `currentDoc`을 추가(`loadFile()`이 호출될 때마다 갱신)하고, 문서가 열려 있으면 그걸로 `reloadFile()`(live reload가 이미 쓰던, 읽던 위치를 보존하며 재렌더하는 함수)을 그대로 재사용하는 `rerenderCurrentDocument()`를 신설 — Reload/Reset Config 핸들러 양쪽 다 `applyTheme()` 다음에 이걸 호출. 문서가 안 열려 있으면 `currentDoc`이 `null`이라 아무 일도 안 함.
 - **검증**: `cargo fmt --check`/`cargo clippy --all-features` 무경고, `cargo test -p backend` 6개 전부 통과. devserver를 실제로 띄워서 모든 엔드포인트를 `curl`로 직접 확인(health/file 200·404/config get·reload·reset·백업/SSE 디바운스 단일 발화). 헤드리스 Chrome으로 실제 브라우저에서 `createBackend()`가 Dev 모드를 정확히 감지하는 것(`capabilities: {watch:true, configFile:false}`)까지는 콘솔 로그로 확인했지만, `?file=` → 렌더까지 이어지는 전체 파이프라인의 최종 DOM 결과는 헤드리스 `--dump-dom`이 `load` 이벤트 시점에 캡처돼서 그 이후에 resolve되는 fetch를 못 잡는 도구 한계로 캡처하지 못했다 — 대신 그 경로가 호출하는 정확한 HTTP 엔드포인트(`GET /api/file?path=`, CORS 헤더 포함)를 `curl`로 직접 검증하고 코드 리뷰로 보완.
 
 ---
 
-### M6 — Tauri 통합 및 패키징
+### M6 — Tauri 통합
+
+패키징/배포(AppImage 빌드, 성능 실측)는 M8로 분리했다 — 이 M6은 오직 IPC/권한/파일 연결까지의 통합만 다룬다.
 
 - `src-tauri`: IPC 9개 커맨드를 `backend` 함수로 위임하는 바인딩만. 로직 금지
 - `fs`/`dialog`/`shell`(opener) 권한을 필요한 범위로만 허용
 - 파일 연결(`.md`, `.markdown`) 및 CLI 인자로 파일 열기
-- 시작 시간 < 1s, 일반 문서 메모리 < 30MB 실측
 
 **선행 확인**: 개발 환경에 `pkg-config`가 없으면 Tauri 시스템 의존성(webkit2gtk-4.1, libsoup 등)이 미설치 상태일 수 있다. M6 착수 전 설치 필요.
 
-**검증**: `npm run tauri dev`로 전체 플로우(열기 → 편집기 저장 → 갱신 → 인쇄 → Config 폴더 열기) 확인. `npm run tauri build` 성공.
+**검증**: `npm run tauri dev`로 전체 플로우(열기 → 편집기 저장 → 갱신 → 인쇄 → Config 폴더 열기) 확인.
+
+**구현 후 확정된 사항**:
+- **시스템 패키지**: Ubuntu 24.04에서 실제로 설치 확인. `libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev pkg-config` — `libwebkit2gtk-4.1-dev` 하나가 `libgtk-3-dev`/`libsoup-3.0-dev`/`libjavascriptcoregtk-4.1-dev`를 의존성으로 끌고 오는 것까지 `apt-cache depends`로 직접 확인함. AppImage 패키징용 `patchelf`/`libfuse2t64`(Ubuntu 24.04는 64비트 time_t 전환으로 `libfuse2`가 아니라 `libfuse2t64`)는 사용자가 패키징을 별도로 진행하기로 해서 이번엔 설치/사용하지 않음 — `tauri build`를 나중에 그냥 돌리면 `bundle.targets` 기본값이 "all"이라 AppImage도 같이 시도하다 실패하니, 그때는 `--bundles deb` 등으로 좁히거나 이 패키지들을 먼저 설치해야 함.
+- **루트 `package.json` 신설**: `@tauri-apps/cli`만 devDependency로 두고 `"tauri": "tauri"` 스크립트 하나만 가짐. `frontend/package.json`은 건드리지 않음(`CLAUDE.md` "Browser Development First" 유지 — frontend는 Tauri CLI를 몰라도 됨). `tauri.conf.json`의 `beforeDevCommand`/`beforeBuildCommand`가 `npm --prefix frontend run dev|build`로 frontend를 원격 호출.
+- **`src-tauri`는 `npx tauri init --ci`로 스캐폴딩**: 아이콘 세트까지 자동 생성됨(직접 만들 필요 없었음). `identifier`를 기본값 `com.tauri.dev`에서 `dev.lightmark.viewer`로, window 크기를 800x600에서 1000x700으로만 수동 수정.
+- **9개 커맨드 전부 `backend` 크레이트로 위임, 로직 없음** (계획대로): `read_file`/`read_config`/`reload_config`/`reset_config`는 `backend::*` 1줄 호출. `watch_file`/`unwatch_file`은 `HashMap<String, backend::FileWatcher>`를 경로로 키잉해서 관리(`IPC_SPEC.md`가 `watch_file(path)`/`unwatch_file(path)`로 경로 기반 시그니처를 이미 명시하고 있고, LightMark는 항상 문서 하나만 보므로 별도 id 체계가 필요 없음 — 같은 경로를 다시 `watch_file`하면 이전 `FileWatcher`가 그냥 교체·drop되면서 감시가 멈춤).
+- **`open_file`/`open_config_folder`/`open_config_file`만 예외적으로 플러그인 사용**: `tauri-plugin-dialog`(네이티브 파일 선택)와 `tauri-plugin-opener`(폴더/파일을 OS 기본 앱으로 열기) — `PLAN.md`가 이미 "fs/dialog/shell(opener) 권한"이라고 명시해둔 부분이라 새로 승인받을 필요 없이 그대로 사용. `capabilities/default.json`에 `dialog:allow-open`/`opener:allow-open-path` 추가(우리 커맨드는 프론트에 플러그인 커맨드를 직접 노출하지 않고 Rust 코드에서 플러그인 API를 호출하는 방식이라 엄밀히는 필수는 아니지만, 의도한 권한 범위를 문서화하는 의미로 추가).
+- **`get_initial_path`: `IPC_SPEC.md`의 9개 커맨드 밖의 추가 항목.** Dev 모드가 `?file=` 쿼리 파라미터로 처음 열 파일을 받는 것과 같은 역할을 Tauri에서는 이 커맨드가 한다 — CLI 인자/파일 연결로 실행된 경로를 앱 시작 시 한 번 pull(프론트가 직접 호출)하는 방식으로, push 이벤트로 하지 않은 이유는 페이지 로드 타이밍과의 레이스를 원천적으로 피하기 위함. 두 번째 실행(다른 .md 파일을 다시 열었을 때)은 `tauri-plugin-single-instance`가 같은 창으로 라우팅하면서 `open-path` 이벤트로 push — 이건 이미 실행 중이라 레이스가 없음.
+- **CLI 인자 파싱은 순수 함수(`src-tauri/src/cli.rs`)로 분리**: `backend/src/watcher.rs`의 `event_affects`와 같은 패턴 — Tauri 앱을 띄우지 않고도 단위 테스트 가능(`extract_path_arg`, 4개 테스트). 상대 경로는 `cwd` 기준으로 resolve — 특히 `tauri-plugin-single-instance`의 콜백이 넘겨주는 `cwd`(두 번째 실행이 일어난 디렉토리)가 이 프로세스 자신의 cwd와 다를 수 있어서 반드시 필요.
+- **macOS `RunEvent::Opened`(dock 아이콘에 드롭/파일 연결)는 구현했지만 미검증**: 이 세션은 Linux 환경이라 실제 macOS에서 컴파일·동작 확인을 못 했다(Rust 코드 자체는 `#[cfg(target_os = "macos")]`로 감싸 Linux/Windows 빌드에는 전혀 포함되지 않음). macOS에서 릴리스하기 전 반드시 실기 확인 필요.
+- **툴바 버튼 배선**: `capabilities.configFile`이 `true`인 첫 번째 백엔드가 Tauri라서, 이전까지 `disabled`로만 렌더되던 Config Folder 버튼이 이번에 처음 실제로 노출됨 — 동시에 `CLAUDE.md`의 "Application only provides: Open Config Folder / Open Config File / Reload Config / Reset Config" 4개를 전부 버튼으로 배선(그동안 UI 진입점이 하나도 없었음). Print 버튼도 같이 배선(`window.print()`) — M6 검증 문구 자체가 "인쇄" 단계를 포함하고 있어서 버튼이 있어야 검증이 말이 됨. TOC Toggle/Zoom/About은 M6 범위 밖이라 그대로 `disabled` 유지.
+- **개선(사용자 요청): 문서를 열기 전엔 Print 버튼 비활성화.** `lm-toolbar`에 `hasDocument` 상태 추가(`setHasDocument(true)`를 `main.ts`의 `loadFile()`에서 호출, 문서를 닫는 기능이 없어서 false로 되돌아갈 일은 없음) — 렌더된 내용이 없을 때 인쇄해봤자 의미가 없으므로.
+- **검증**: `cargo build/test/fmt/clippy -p app`(4개 CLI 파싱 테스트 포함) 전부 통과. `npm run tauri dev`를 실제로 백그라운드로 띄워서 25초 이상 크래시 없이 떠 있는 것 확인(이 세션은 GUI가 있는 실제 X/Wayland 데스크톱 환경이라 프로세스가 실제로 살아 있음은 확인했지만, xdotool/wmctrl/스크린샷 도구가 없어서 창 내용이 실제로 렌더링되는지까지는 시각적으로 확인 못 함 — 사용자가 직접 열어서 최종 확인 필요). `npm run tauri build`(전체 번들링/AppImage)는 M8에서 다룬다 — patchelf/libfuse2t64 미설치라 이번엔 실행하지 않음.
+- **버그 수정(사용자 리포트): Open 버튼을 누르면 앱이 통째로 멈춤.** `open_file`이 일반(non-async) `fn`이었던 게 원인 — Tauri는 커맨드를 `async fn`으로 선언하지 않으면 **IPC를 처리하는 그 스레드에서 그대로, 별도 스레드로 옮기지 않고** 실행한다(`tauri-macros`의 `ExecutionContext` 기본값이 "Blocking" — 이름과 반대로 오히려 스레드를 안 옮긴다는 뜻이라 헷갈리기 쉬움. `async fn`으로 선언해야만 `respond_async_serialized`가 `async_runtime::spawn`으로 실제로 다른 스레드에 올린다). Linux에서 이 스레드는 GTK 메인 루프를 도는 스레드라, `blocking_pick_file()`이 다이얼로그 응답을 기다리는 동안 그 다이얼로그를 실제로 그리고 입력을 받아야 할 메인 루프 자체가 멈춰서 데드락이 났다. 수정: `open_file`을 `async fn`으로 변경(본문은 그대로, `.await`는 필요 없음 — 선언만 바꿔도 Tauri가 백그라운드 워커 스레드로 옮겨준다). `open_config_folder`/`open_config_file`은 같은 위험이 있어 보였지만, `tauri-plugin-opener`가 내부적으로 `open::that_detached`(프로세스를 완전히 떼어내 대기하지 않음)를 쓰는 걸 소스에서 직접 확인해서 그대로 둠.
+- **버그 수정(사용자 리포트, 2단계): 드래그&드롭으로 파일 열기가 Tauri에서만 동작 안 함.** `lm-viewer.ts`의 드롭 처리는 브라우저 표준 `dataTransfer.files` API 그대로라 Web/Dev에선 문제없음.
+  - **1차 시도(틀림, 되돌림)**: `@tauri-apps/cli`의 config 스키마가 `dragDropEnabled`에 "Disabling it is required to use HTML5 drag and drop on the frontend"라고 적어둔 걸 보고 `tauri.conf.json`에 `"dragDropEnabled": false`를 추가했었다. 그런데 스키마 설명을 다시 보면 그 문구는 **"on Windows"로 범위가 좁혀져 있다** — Linux(WebKitGTK)에서는 이 옵션을 꺼도 HTML5 DnD가 살아나는 게 아니라, Tauri의 가로채기가 없어지면서 **WebKitGTK 자체의 기본 동작**(드롭된 파일로 페이지 전체를 네비게이션 — 렌더링 안 된 raw text가 화면 전체를 덮어씀)이 그 자리를 대신 차지해버렸다. 그래서 `lm-toc` 등 drop 리스너가 없는 영역에 드롭하면 앱 전체가 raw text로 바뀌었고(`preventDefault`가 없어서), `lm-viewer`에 드롭하면 `preventDefault`가 그 네비게이션은 막았지만 `dataTransfer.files`엔 애초에 읽을 수 있는 `File`이 안 실려서(임베디드 WebKitGTK가 외부 OS 드롭에 대해 브라우저 수준의 File 구체화를 안 해줌) 아무 일도 안 일어났다.
+  - **2차 시도(확정)**: `dragDropEnabled`는 기본값(`true`)으로 되돌리고, 대신 Tauri 고유의 `getCurrentWebview().onDragDropEvent()`(`@tauri-apps/api/webview`)를 사용 — 이건 OS 드롭을 Rust 쪽에서 읽어 **실제 파일 경로**(문자열)를 준다(브라우저 File 객체가 아님). `platform/tauri.ts`의 `onOpenPath(cb)` 안에 이 리스너를 하나 더 추가해서 `type: 'drop'` 이벤트가 오면 `cb(paths[0])`를 호출하도록 함 — CLI 인자/파일 연결로 열 때 이미 쓰던 것과 정확히 같은 경로(`main.ts`의 `backend.onOpenPath?.((path) => openPath(path))`)를 재사용하는 것이라 `lm-viewer.ts`/`main.ts`는 전혀 안 건드림. `dragDropEnabled`가 다시 `true`라 OS 드롭은 어느 영역에 놓든 DOM에 도달하기 전에 Tauri가 가로채므로, `lm-viewer.ts`의 기존 DOM 기반 드롭 처리와 겹치거나 경쟁할 일이 없다(Tauri에서는 그냥 안 쓰이게 되는 코드 경로가 될 뿐 — Web/Dev에서는 그대로 유일한 경로).
+- **개선(사용자 요청): Open 다이얼로그가 마지막으로 연 디렉터리를 기억.** Tauri에서만 의미 있는 기능(Web의 `<input type=file>`은 브라우저 보안상 시작 디렉터리를 지정할 수 없고, Dev는 다이얼로그 자체가 없음) — `src-tauri/src/lib.rs`의 `open_file`에서만 처리. `tauri-plugin-dialog`의 `FileDialogBuilder::set_directory()`로 시작 위치를 지정.
+  - **`config.json`이 아닌 별도 `state.json`에 저장**: `CLAUDE.md`의 "No graphical settings editor" 원칙은 문서화된, 사용자가 직접 편집하는 `config.json`(`CONFIG_SPEC.md` 스키마)에 관한 것이지, 앱이 스스로 기억하는 이런 내부 편의 상태까지 막는 취지는 아니라고 판단 — 두 파일을 분리해서 `config.json`은 계속 "사람이 손으로 편집하는 파일"로만 유지. `backend/src/state.rs`(신설): `AppState { last_opened_dir: Option<PathBuf> }`를 `backend::config_dir()`와 같은 디렉터리의 `state.json`에 저장. `config.rs`의 `load_config()`와 동일하게 읽기 실패 시 그냥 기본값(빈 상태)으로 넘어간다 — 이 파일이 없거나 깨져도 앱이 죽을 이유가 없음.
+  - **디렉터리가 사라졌으면 홈으로**: 순수 함수 `resolve_initial_dir(remembered, exists_fn, home)`로 분리(`watcher.rs`의 `event_affects`와 같은 패턴 — Tauri 없이 단위 테스트 가능)해서 "기억된 디렉터리가 있고 지금도 존재하면 그걸, 아니면(기억이 없거나 삭제됨) 홈 디렉터리"를 결정. 홈 디렉터리는 이미 승인된 `dirs` 크레이트의 `dirs::home_dir()` 재사용(새 의존성 없음).
+  - 파일을 성공적으로 선택하면 그 부모 디렉터리를 `backend::save_last_opened_dir()`로 최선 노력 저장(쓰기 실패해도 파일 열기 자체는 실패시키지 않음 — 다음번 시작 위치를 기억하는 건 편의 기능이지 핵심 기능이 아님).
+
+---
+
+### M7 — 남은 툴바 버튼 (TOC Toggle / Zoom / About)
+
+M1부터 `disabled`로만 자리를 잡아두고 M3~M6에서 계속 미뤄온 세 버튼. 더 이상 구현을 막는 장애물이 없어 별도 마일스톤으로 분리해 처리한다.
+
+- **TOC Toggle**: 사이드바 숨김/표시. `CONFIG_SPEC.md`의 `tocVisible`을 시작 상태로 쓰되, 토글은 **세션 동안만** 유지(config.json에 다시 쓰지 않음 — `CLAUDE.md`의 "No graphical settings editor" 그대로 적용). `.lm-content`의 그리드 컬럼(`var(--lm-toc-width) 1fr`)을 `1fr`로 바꾸는 정도의 CSS 토글 + `lm-toc` 자체의 표시 여부.
+- **Zoom**: `--lm-zoom` CSS 변수를 버튼으로 증가/감소. `theme.ts`의 `computeCssVars`가 이미 `config.zoom`을 `--lm-zoom`으로 변환하므로 그 값을 세션 중 변경해 재적용하기만 하면 됨 — config.json에 쓰지 않음(Zoom도 TOC Toggle과 같은 이유로 세션 전용). 상태바의 zoom 표시(`lm-statusbar`, 지금은 "100%" 하드코딩)와 연동.
+- **About**: 앱 이름/버전(패키지 메타데이터) 보여주는 간단한 표시. 네이티브 다이얼로그가 있는 건 Tauri뿐이라, Web/Dev/Tauri 모두 동작하게 하려면 플랫폼 API에 기대지 않는 간단한 인페이지 표시(예: 작은 모달)로.
+
+**검증**: 세 버튼 모두 클릭 시 실제로 동작. Zoom 50~200% 범위에서 레이아웃 정상(M3가 이미 검증해뒀던 CSS 경로 재사용). TOC Toggle/Zoom 상태가 페이지/앱을 새로 열면 초기화되는 것(세션 전용, 저장 안 됨)도 의도된 동작으로 확인.
+
+---
+
+### M8 — 패키징 및 배포
+
+M6(Tauri 통합)에서 분리. 통합이 끝난 뒤 마지막에 하는 게 맞는 작업들이라 별도 마일스톤으로 둔다.
+
+- AppImage 등 `npm run tauri build` 패키징 — `patchelf`/`libfuse2t64`(Ubuntu 24.04는 `libfuse2`가 아니라 `libfuse2t64`, M6에서 확인해둔 사항) 설치 필요. `tauri.conf.json`의 `bundle.targets` 기본값이 "all"이라 그대로 두면 AppImage/deb/rpm을 다 시도하니, 필요하면 `--bundles`로 범위를 좁힌다.
+- 시작 시간 < 1s, 일반 문서 메모리 < 30MB 실측 — 디버그 빌드가 아니라 실제 릴리스 바이너리(`npm run tauri build -- --no-bundle` 또는 번들링된 최종 결과물)로 측정해야 의미 있는 수치가 나온다.
+- macOS `RunEvent::Opened`(M6에서 구현했지만 Linux 환경이라 미검증) 실기 확인 — macOS 배포 전 필수.
+- 코드 서명/배포 채널 등 실제 릴리스 절차(범위는 착수 시점에 확정).
+
+**검증**: `npm run tauri build` 성공(선택한 타깃 전부). 패키징된 결과물을 실제로 설치해서 열기/저장 반영/인쇄/Config 동작 전체 플로우 재확인. 시작 시간/메모리 실측치를 `CLAUDE.md`의 목표(<1s, <30MB)와 비교해 기록.
 
 ---
 
@@ -243,6 +306,7 @@ Config의 `mermaid`/`katex`/`syntaxHighlight`가 false면 import 자체를 하�
 
 1. **[해결됨] M2 — raw HTML 허용 여부**: `html: false`로 확정. `docs/*.md`를 grep한 결과 raw HTML은 전부 인라인 코드/코드블록 안에서만 등장(`<input type=file>`, `<span class="lm-math">` 등은 문서화 예시일 뿐)해서 실제로 깨지는 문서가 없다. sanitizer 의존성을 추가할 이유가 없으므로 보류.
 2. **[해결됨] M5 — `axum`, `dirs` 의존성 승인**: 둘 다 승인. `axum`은 대체 수단이 없어(경량 서버 자체 구현이 더 위험) 그대로, `dirs`는 사용자에게 직접 구현 대안과 함께 확인받아 크레이트 사용으로 확정.
+3. **[해결됨] M6 — md 파일 내 상대 경로 이미지 링크 처리**: md 파일의 위치를 기준으로 상대 경로를 resolve하는 게 의미상 맞지만(Dev/Tauri는 실제 파일 경로를 알아서 고칠 수 있음, Web은 브라우저 File API 보안상 파일 경로 자체를 알 수 없어 원천적으로 불가능), **사용자 결정: 지금 상태(모드별로 깨져 있는 현재 동작) 그대로 유지, 수정하지 않음**. 재검토 요청이 없으면 이대로 둔다.
 
 ---
 
@@ -259,7 +323,10 @@ cargo test -p backend
 cargo run -p backend --features dev-server   # :7878
 
 # 통합 (M6)
-npm run tauri dev && npm run tauri build
+npm run tauri dev
+
+# 패키징 (M8)
+npm run tauri build
 ```
 
 마일스톤 종료 조건은 매번 동일하다: 해당 검증 통과 + 린트/빌드 무에러 + Web 모드와 (M5 이후) Dev 모드 양쪽 동작 + 관련 문서 갱신.

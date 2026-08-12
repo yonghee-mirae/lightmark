@@ -29,13 +29,20 @@ const GITHUB_DARK: ThemeTokens = {
 };
 
 // Built-in themes only (docs/PLAN.md M3: "github-light, github-dark 2종").
-const THEMES: Record<string, ThemeTokens> = {
-  'github-light': { bg: '#ffffff', fg: '#1f2328', border: '#d0d7de', muted: '#656d76', accent: '#0969da' },
-  'github-dark': GITHUB_DARK,
-};
+const GITHUB_LIGHT: ThemeTokens = { bg: '#ffffff', fg: '#1f2328', border: '#d0d7de', muted: '#656d76', accent: '#0969da' };
+
+// Anything other than the one known light theme falls back to dark tokens - this covers an
+// unrecognized/custom `theme` value (typo, future theme not yet added here) the same way as a
+// genuinely dark theme, rather than silently landing on light. Exported so other consumers that
+// need the same "light vs. dark" call for a theme name (e.g. Mermaid's own theme names, which
+// don't line up with ours - see core/lazy/mermaid.ts) share this one answer instead of each
+// re-deriving their own theme allowlist and risking disagreeing with this fallback.
+export function isLightTheme(theme: string): boolean {
+  return theme === 'github-light';
+}
 
 function resolveThemeTokens(theme: string): ThemeTokens {
-  return THEMES[theme] ?? GITHUB_DARK;
+  return isLightTheme(theme) ? GITHUB_LIGHT : GITHUB_DARK;
 }
 
 // System font stack first; a configured custom name is prepended, quoted if it contains a space

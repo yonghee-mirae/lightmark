@@ -10,11 +10,13 @@
 - open_config_folder()
 - open_config_file()
 - reset_config()
+- get_initial_path() — M6에서 추가. 위 9개에 없던 항목: CLI 인자/파일 연결로 실행됐을 때의 경로를 프론트가 시작 시 1회 pull. Dev 모드의 `?file=` 쿼리 파라미터와 같은 역할.
 
 ## Events
-- file-changed
-- config-changed
-- watcher-error
+- file-changed — 구현됨. payload로 변경된 파일의 경로를 실어서, 레이스(watch/unwatch 직후 다른 파일 open) 발생 시 프론트가 필터링 가능.
+- open-path — M6에서 추가. 이미 실행 중인 창에 새 파일을 열어야 할 때(두 번째 실행 → `tauri-plugin-single-instance`, macOS 파일 연결 → `RunEvent::Opened`) push.
+- config-changed — **미구현**. 지금은 config를 바꾸는 유일한 경로가 프론트 자신의 invoke(reload/reset) 호출뿐이라 응답값으로 충분해서, 별도 브로드캐스트가 필요 없었음.
+- watcher-error — **미구현**. `backend::watch_file`의 콜백이 "변경됨" 하나만 신호하는 구조라(에러 채널 없음) 표면화할 경로가 없음 — 발생 시 그냥 무시됨.
 
 ## Dev Server (Tauri 비의존)
 `cargo run -p backend --features dev-server` (127.0.0.1:7878). HTTP+SSE로 동일 기능 제공.
@@ -30,5 +32,6 @@
 | - | GET /api/health (모드 감지용) |
 
 ## Frontend BackendApi
-Web / Dev / Tauri 3개 구현체가 동일 인터페이스(BackendApi)를 만족한다.
+Web / Dev / Tauri 3개 구현체가 동일 인터페이스(BackendApi)를 만족한다(M6에서 TauriBackend 구현 완료).
 watch_file + unwatch_file은 프론트 표면에서 `watchFile(path, onChange): Unwatch` 하나로 합쳐진다.
+get_initial_path()/open-path 이벤트는 `BackendApi`의 선택적(optional) 메서드로만 존재 — Web/Dev는 구현하지 않는다(Dev는 `?file=` 쿼리 파라미터로 같은 역할을 대신함).

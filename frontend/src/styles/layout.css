@@ -7,6 +7,13 @@ body {
   background: var(--lm-color-bg);
   color: var(--lm-color-fg);
   font-family: var(--lm-font-body);
+  /* WebKitGTK (Tauri on Linux) renders text visibly heavier than Chromium at the same
+     font-family/weight/size. Applied globally (not just on the viewer) so every element gets
+     the same treatment - being confirmed by the user across viewer + TOC before this is
+     considered settled; see docs/PLAN.md M3 for the back-and-forth on scoping this narrowly
+     vs. globally. Chromium/Firefox mostly ignore this property, so no effect there. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
@@ -223,6 +230,27 @@ lm-toc a.active {
   lm-statusbar,
   lm-breadcrumb {
     display: none !important;
+  }
+
+  /* #app/.lm-content/lm-viewer are all fixed-height (100vh) with overflow clipped for the
+     on-screen scrollable-pane layout - printing needs the opposite: the full document has to
+     flow across as many pages as it needs instead of being clipped to a single screen's worth. */
+  #app {
+    height: auto;
+  }
+
+  .lm-content {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .lm-viewer-pane {
+    overflow: visible;
+  }
+
+  lm-viewer {
+    overflow: visible;
+    height: auto;
   }
 
   .lm-markdown pre {

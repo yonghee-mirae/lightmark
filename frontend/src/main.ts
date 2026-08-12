@@ -12,7 +12,7 @@ import type { Config } from './types/config';
 import type { LmToolbar } from './components/lm-toolbar';
 import type { LmViewer, FileDropDetail, ActiveHeadingDetail } from './components/lm-viewer';
 import type { LmStatusbar } from './components/lm-statusbar';
-import type { LmToc } from './components/lm-toc';
+import type { LmToc, TocSelectDetail } from './components/lm-toc';
 import type { LmBreadcrumb } from './components/lm-breadcrumb';
 
 const backend = await createBackend();
@@ -44,7 +44,15 @@ const breadcrumb = maybeBreadcrumb;
 toolbar.setCapabilities(backend.capabilities);
 statusbar.setCapabilities(backend.capabilities);
 
+// The currently displayed document's raw content, kept so Reload/Reset Config (below) can
+// re-render it against the new config without re-reading the file - config fields that only take
+// effect at render time (mermaidTheme, syntaxHighlight/mermaid/katex on-off, theme's effect on
+// Shiki's baked-in code colors) are otherwise stuck showing whatever was true when the document
+// was first opened, unlike the CSS-variable-driven fields applyTheme() already updates live.
+let currentDoc: { name: string; content: string } | null = null;
+
 function loadFile(name: string, content: string): void {
+  currentDoc = { name, content };
   const start = performance.now();
   const { html, headings } = renderMarkdown(content);
   statusbar.setRenderTime(performance.now() - start);
@@ -57,10 +65,12 @@ function loadFile(name: string, content: string): void {
   viewer.setContent(html, headings, {
     theme: currentConfig.theme,
     mermaid: currentConfig.mermaid,
+    mermaidTheme: currentConfig.mermaidTheme,
     katex: currentConfig.katex,
     syntaxHighlight: currentConfig.syntaxHighlight,
   });
   statusbar.setFilename(name);
+  toolbar.setHasDocument(true);
 }
 
 // Live reload's watch state. Only ever one at a time - LightMark shows one document.
@@ -103,7 +113,14 @@ function reloadFile(name: string, content: string): void {
   const anchor = viewer.getActiveId();
   loadFile(name, content);
   if (anchor) {
-    viewer.scrollToHeading(anchor);
+    viewer.focusHeading(anchor);
+  }
+}
+
+// No-op if no document is open yet - Reload/Reset Config work with or without one.
+function rerenderCurrentDocument(): void {
+  if (currentDoc) {
+    reloadFile(currentDoc.name, currentDoc.content);
   }
 }
 
@@ -117,9 +134,39 @@ function openPath(path: string): void {
 toolbar.addEventListener('lm-open', () => {
   void backend.openFile().then((opened) => {
     if (opened) {
-      stopWatching();
       loadFile(opened.name, opened.content);
+      // A no-op for Web/Dev (capabilities.watch is false there, and Dev's openFile() never
+      // resolves to begin with) - only Tauri's dialog returns a real, watchable path.
+      watchPath(opened.path);
     }
+  });
+});
+
+toolbar.addEventListener('lm-print', () => {
+  window.print();
+});
+
+toolbar.addEventListener('lm-config-folder', () => {
+  void backend.openConfigFolder();
+});
+
+toolbar.addEventListener('lm-config-file', () => {
+  void backend.openConfigFile();
+});
+
+toolbar.addEventListener('lm-reload-config', () => {
+  void backend.reloadConfig().then((config) => {
+    currentConfig = config;
+    applyTheme(config);
+    rerenderCurrentDocument();
+  });
+});
+
+toolbar.addEventListener('lm-reset-config', () => {
+  void backend.resetConfig().then((config) => {
+    currentConfig = config;
+    applyTheme(config);
+    rerenderCurrentDocument();
   });
 });
 
@@ -135,6 +182,15 @@ viewer.addEventListener('lm-active-heading', (event) => {
   breadcrumb.setActive(id);
 });
 
+// A TOC click always focuses that heading immediately, even in the one case scroll-driven
+// tracking alone can't handle: the target is already fully visible (e.g. one of several headings
+// all shown together at the very end of a short document), so jumping to it causes no actual
+// scroll and therefore no scroll/scrollend event to react to (docs/PLAN.md M2).
+toc.addEventListener('lm-toc-select', (event) => {
+  const { id } = (event as CustomEvent<TocSelectDetail>).detail;
+  viewer.focusHeading(id);
+});
+
 // Dev/Tauri mode: there's no native "Open" dialog outside Tauri, so a real filesystem path opens
 // via `?file=<path>` instead of BackendApi.openFile() (docs/IPC_SPEC.md: open_file has no Dev
 // Server route). Gated on capabilities.watch since that's exactly the Web-vs-Dev/Tauri split for
@@ -143,3 +199,13 @@ const filePath = new URLSearchParams(location.search).get('file');
 if (filePath && backend.capabilities.watch) {
   openPath(filePath);
 }
+
+// Tauri: no `?file=` query param to read, so the initial CLI/file-association path (if any) is
+// pulled once via getInitialPath() instead, and any later open (double-clicking another .md,
+// which src-tauri's single-instance plugin routes into this same window) pushes via onOpenPath().
+void backend.getInitialPath?.().then((path) => {
+  if (path) {
+    openPath(path);
+  }
+});
+backend.onOpenPath?.((path) => openPath(path));

@@ -6,16 +6,17 @@ describe('DEFAULT_CONFIG', () => {
     expect(DEFAULT_CONFIG).toEqual({
       theme: 'github-light',
       customCss: '',
-      fontFamily: 'Pretendard',
-      codeFontFamily: 'JetBrains Mono',
+      fontFamily: 'sans-serif',
+      codeFontFamily: 'monospace',
       zoom: 100,
       tocVisible: true,
       breadcrumbVisible: true,
       syntaxHighlight: true,
       mermaid: true,
+      mermaidTheme: 'auto',
       katex: true,
       autoReload: true,
-      printUseLightTheme: false,
+      printUseLightTheme: true,
     });
   });
 });
