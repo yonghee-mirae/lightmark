@@ -3,18 +3,24 @@
 
 export class LmStatusbar extends HTMLElement {
   private filename = 'No file open';
+  // Mirrors main.ts's own zoom state (docs/PLAN.md M7) - starts at 100 (DEFAULT_CONFIG.zoom)
+  // since main.ts only overrides this after readConfig() resolves.
+  private zoom = 100;
   private filenameEl: HTMLSpanElement | null = null;
   private perfEl: HTMLSpanElement | null = null;
+  private zoomEl: HTMLSpanElement | null = null;
 
   connectedCallback(): void {
     this.innerHTML = `
       <span class="lm-status-filename"></span>
       ${import.meta.env.DEV ? '<span class="lm-status-perf"></span>' : ''}
-      <span class="lm-status-zoom">100%</span>
+      <span class="lm-status-zoom"></span>
     `;
     this.filenameEl = this.querySelector('.lm-status-filename');
     this.perfEl = this.querySelector('.lm-status-perf');
+    this.zoomEl = this.querySelector('.lm-status-zoom');
     this.updateFilename();
+    this.updateZoom();
   }
 
   setFilename(name: string): void {
@@ -28,9 +34,20 @@ export class LmStatusbar extends HTMLElement {
     }
   }
 
+  setZoom(zoom: number): void {
+    this.zoom = zoom;
+    this.updateZoom();
+  }
+
   private updateFilename(): void {
     if (this.filenameEl) {
       this.filenameEl.textContent = this.filename;
+    }
+  }
+
+  private updateZoom(): void {
+    if (this.zoomEl) {
+      this.zoomEl.textContent = `${this.zoom}%`;
     }
   }
 }

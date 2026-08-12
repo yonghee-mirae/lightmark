@@ -10,6 +10,7 @@ import { buildToc } from './core/toc';
 import { applyTheme } from './core/theme';
 import { DEFAULT_CONFIG, configsEqual } from './types/config';
 import type { Config } from './types/config';
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_RESET } from './components/lm-toolbar';
 import type { LmToolbar } from './components/lm-toolbar';
 import type { LmViewer, FileDropDetail, ActiveHeadingDetail } from './components/lm-viewer';
 import type { LmStatusbar } from './components/lm-statusbar';
@@ -25,11 +26,17 @@ let currentConfig: Config = DEFAULT_CONFIG;
 // Session-only (docs/PLAN.md M7): starts from the config's tocVisible, but toggling it below
 // never writes back to config.json - CLAUDE.md's "No graphical settings editor" applies.
 let tocVisible = DEFAULT_CONFIG.tocVisible;
+// Session-only (docs/PLAN.md M7, same reasoning as tocVisible above) - starts from the config's
+// zoom, but the +/-/reset buttons below never write back to config.json.
+let zoom = DEFAULT_CONFIG.zoom;
 void backend.readConfig().then((config) => {
   currentConfig = config;
   applyTheme(config);
   tocVisible = config.tocVisible;
   updateTocDisplay();
+  zoom = config.zoom;
+  toolbar.setZoom(zoom);
+  statusbar.setZoom(zoom);
 });
 
 const maybeToolbar = document.querySelector<LmToolbar>('lm-toolbar');
@@ -74,6 +81,24 @@ toolbar.addEventListener('lm-toc-toggle', () => {
   tocVisible = !tocVisible;
   updateTocDisplay();
 });
+
+// Clamped to [ZOOM_MIN, ZOOM_MAX] (the range docs/PLAN.md M3 verified the CSS scaling looks
+// right across) and only touches --lm-zoom (via applyTheme, reusing currentConfig for every
+// other field) - no re-render of the document itself, unlike Apply's config-driven fields.
+function setZoom(value: number): void {
+  const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value));
+  if (clamped === zoom) {
+    return;
+  }
+  zoom = clamped;
+  applyTheme({ ...currentConfig, zoom });
+  toolbar.setZoom(zoom);
+  statusbar.setZoom(zoom);
+}
+
+toolbar.addEventListener('lm-zoom-out', () => setZoom(zoom - ZOOM_STEP));
+toolbar.addEventListener('lm-zoom-reset', () => setZoom(ZOOM_RESET));
+toolbar.addEventListener('lm-zoom-in', () => setZoom(zoom + ZOOM_STEP));
 
 toolbar.setCapabilities(backend.capabilities);
 
