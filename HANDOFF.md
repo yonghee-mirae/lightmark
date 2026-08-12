@@ -12,7 +12,7 @@
 - **M6 (Tauri 통합)**: **완료, 전체 검증 완료**(+사용자 리포트로 버그 2건 수정: Open 버튼 데드락, Tauri drag&drop). 아래 "M6 구현 상세" 참고. Packaging/Release는 원래 M6에 있었으나 **M8로 분리**(사용자 요청 — 통합과 배포는 성격이 달라서, 배포는 맨 마지막 마일스톤으로). 사용자가 실제 Tauri 앱에서 직접 확인 완료: live reload, Config 4개 버튼(Config Folder/File 열기, Reload/Reset Config), Open 다이얼로그 마지막 위치 기억, CLI 인자로 파일 열기, single-instance 라우팅. **macOS 전환 세션에서 Print 버튼도 실기로 문제 발견/수정/재확인 완료**(아래 "macOS 전환 세션" 참고) — `RunEvent::Opened`(dock 드롭/파일 연결)는 여전히 미검증.
 - **M7 (TOC Toggle / Zoom / About)**: **TOC Toggle, About 구현 완료.** TOC Toggle은 사용자가 실제 브라우저에서 클릭해 정상 동작 확인("toc toggle 버튼이 잘 동작하는 건 확인했어"). About은 사용자가 실제로 열어보며 버그(Close 버튼 제거 후 의도치 않은 outline)를 리포트/수정까지 마쳤고 그 뒤 이어서 다른 요청(버튼 라벨/Config File·Reset 삭제 등)으로 넘어감 — 즉 실사용 중이지만 최종 상태에 대한 별도의 "정상 동작" 재확인 문구는 없음. 이후 버튼 디자인 전면 개편, 라벨 한 단어화, Config File/Reset Config 기능 삭제(+Reload가 자기 치유), `Reload Config`→`Apply` 라벨, 툴바 높이 축소까지 전부 사용자가 최종 확인("좋아. 모두 좋아."/"ok. 모두 좋아."). Zoom은 미착수. 아래 "M7 구현 상세"/"다음에 할 일" 참고.
 - **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리), 미착수. macOS 전환으로 계획이 Linux 전제(AppImage/`patchelf`/`libfuse2t64`)에서 벗어남 — macOS는 `.app`/`.dmg` 타깃이라 착수 시 범위를 다시 잡아야 함. 릴리스 빌드 성능 실측(<1s, <30MB)도 미착수.
-- **macOS 전환 세션 (2026-08-12)**: 개발 환경을 Ubuntu에서 macOS로 이전. 빌드/테스트 자체는 시스템 패키지 설치 없이 전부 통과했지만, 그 과정에서 macOS 전용 버그 2건(watcher의 FSEvents 경로 불일치, Print 버튼의 Tauri ACL 권한 누락)을 발견/수정하고 사용자가 Print는 실기로 재확인함. 그 외 사용자 요청으로 config 자기 치유 범위 확장, 구현 안 된 채로 스키마에만 남아있던 config 필드 2개(`autoReload`, `breadcrumbVisible`) 삭제, 상태바 레이아웃 조정, Apply 버튼 no-op 최적화까지 진행. 아래 "macOS 전환 세션 구현 상세" 참고.
+- **macOS 전환 세션 (2026-08-12)**: 개발 환경을 Ubuntu에서 macOS로 이전. 빌드/테스트 자체는 시스템 패키지 설치 없이 전부 통과했지만, 그 과정에서 macOS 전용 버그 3건(watcher의 FSEvents 경로 불일치, Print 버튼의 Tauri ACL 권한 누락, 문서 끝 스크롤 시 트랙패드 러버밴드로 툴바/상태바가 밀림)을 발견/수정하고 사용자가 Print·러버밴드는 실기로 재확인함. 그 외 사용자 요청으로 config 자기 치유 범위 확장, 구현 안 된 채로 스키마에만 남아있던 config 필드 2개(`autoReload`, `breadcrumbVisible`) 삭제, 상태바 레이아웃 조정, Apply 버튼 no-op 최적화, viewer/TOC 가로 스크롤 방지(word-wrap)까지 진행. 아래 "macOS 전환 세션 구현 상세" 참고.
 
 다음 세션은 사용자의 새 지시를 기다리는 상태에서 시작 — M7 나머지(Zoom), M8(이번엔 macOS 기준으로 범위 재검토 필요), `RunEvent::Opened` 실기 검증 중 어느 걸 먼저 할지가 다음 화두.
 
@@ -318,6 +318,24 @@ Ubuntu에서 개발하던 걸 macOS로 이어받은 세션. 개발 도구(Xcode 
 
 ### 참고: 화면 캡처를 통한 시각적 검증은 더 이상 하지 않음
 사용자가 "앞으로 확인은 내가 직접 할거니까 화면을 캡쳐해 검증하는 단계는 하지 마"라고 명시 — 이후로는 UI 변경도 lint/typecheck/build/test 같은 코드 레벨 검증까지만 하고 화면 캡처(Playwright/chromium-cli 등)로 직접 눈으로 확인하는 단계는 생략, 사용자가 직접 확인.
+
+### 버그 수정(macOS 전용, 사용자 리포트, 2단계): 문서 끝까지 스크롤하면 툴바/상태바가 잠깐 화면 밖으로 밀려났다가 돌아옴
+macOS 트랙패드의 러버밴드(rubber-band) 오버스크롤 효과. Linux(WebKitGTK)는 이 효과가 기본으로 없어서 Ubuntu에서는 안 보였던 증상.
+
+- **1차 시도(부분적으로만 효과, 사용자가 TOC/툴바/상태바에서는 여전히 재현됨을 리포트)**: `lm-viewer`/`lm-toc`(실제 스크롤이 일어나는 컨테이너)에 `overscroll-behavior: contain` 추가 — 경계에서 스크롤 입력이 부모(문서)로 체이닝되는 것을 막으려는 시도. `lm-viewer`에서는 실제로 해결됐지만, `lm-toc`에서 스크롤하거나 스크롤할 내용이 전혀 없는 툴바/상태바 위에서 스크롤해도 여전히 전체 페이지가 튕겼음.
+- **원인 재확인**: 스크롤할 내용이 없는 영역(툴바/상태바)에서도 재현된다는 게 결정적 신호 — 이건 특정 자식 요소의 "스크롤 체이닝"이 아니라, WKWebView의 **메인 프레임(문서 `html`) 자체가 갖고 있는 엘라스틱 바운스**가 트랙패드 스크롤 제스처마다 적용되는 것이었음. 자식 요소의 `overscroll-behavior: contain`은 체이닝만 막을 뿐 문서 루트 자체의 이 성질에는 영향을 못 줌(WebKit이 스크롤 체이닝 억제를 완전히 구현하지 못하는 것으로 보임).
+- **2차 시도(확정)**: `html, body`에 `overflow: hidden` + `overscroll-behavior: none` 추가 — `#app`이 고정 `100vh` 레이아웃이라 문서 자체가 화면에서 스크롤할 이유가 원래 없으므로 안전. **`@media screen`으로 범위 한정**이 핵심 — 인쇄 시엔 `#app`/`.lm-viewer-pane`/`lm-viewer`가 `height: auto`/`overflow: visible`로 풀려서 문서 전체가 여러 페이지로 흘러야 하는데, `html`/`body`에 `overflow: hidden`을 무조건 걸면 M3에서 고쳤던 "인쇄 시 한 화면 분량만 나오는" 버그가 재발할 뻔했음 — `@media screen`으로 화면 전용으로 한정해서 그 회귀를 피함. `lm-viewer`/`lm-toc`의 `overscroll-behavior: contain`은 체이닝 억제가 실제로 되는 다른 엔진(Chromium/Firefox, Web/Dev 모드)을 위해 그대로 유지.
+- **검증**: 사용자가 실제 macOS 앱에서 뷰어/TOC/툴바/상태바 전부 재확인, "ok. 잘돼."로 확정.
+
+### 개선(사용자 요청): viewer/TOC 영역에 가로 스크롤이 절대 생기지 않도록 word-wrap 적용
+러버밴드 수정 확인 직후, 사용자가 "viewer 영역에는 절대 횡스크롤이 생기지 않도록 word-wrap을 철저하게 적용해줘"라고 요청 — 공백 없는 긴 텍스트(URL, 식별자 등)나 넓은 테이블이 뷰어 폭을 넘기면, `overflow-y: auto`가 걸린 요소는 CSS 스펙상 반대쪽 축(`overflow-x`)이 명시 안 돼 있어도(기본값 `visible`) 암묵적으로 `auto`로 승격되기 때문에 실제로 가로 스크롤바가 생길 수 있는 상태였음(코드블록/Mermaid는 이미 자체 내부 스크롤로 처리돼 있어 문제 없음 — 강제 줄바꿈하면 오히려 깨지는 의도된 예외로 그대로 둠).
+
+`frontend/src/styles/layout.css`:
+- `.lm-markdown`에 `overflow-wrap: break-word` + `word-break: break-word` 추가 — 상속되는 속성이라 문단/헤딩/링크/리스트/인라인 코드 등 모든 하위 요소에 한 번에 적용됨(오래된 WebKit의 인라인/테이블 셀 줄바꿈 처리가 불완전한 경우를 대비해 표준 `overflow-wrap`과 레거시 `word-break` 둘 다 추가).
+- `.lm-markdown table`에 `table-layout: fixed` + `width: 100%` 추가 — `table-layout: auto`(기본값)에서는 위 wrap 속성이 있어도 브라우저가 셀의 줄바꿈 없는 콘텐츠 폭을 먼저 계산해버려서 열이 많은 테이블은 여전히 넘칠 수 있음, `fixed`로 바꿔야 wrap이 실제로 적용됨.
+- `.lm-math-block`(KaTeX 블록 수식)에 `overflow-x: auto` 추가 — 수식은 강제로 줄바꿈하면 수식 자체가 깨지므로, 코드블록/Mermaid와 동일한 "블록 자체 내부 스크롤, 뷰어 패널은 안 밀림" 패턴으로 처리.
+- 이어서 사용자가 "toc에도 횡스크롤이 생기지 않으면 좋겠어"로 확인 — `lm-toc`에도 동일하게 `overflow-wrap: break-word` + `word-break: break-word` 추가(상속되어 `a`/`li`/`ul` 전부에 적용). 긴(공백 없는) heading 제목이 고정된 `--lm-toc-width` 컬럼을 뚫지 않고 줄바꿈됨.
+- 검증: `npm run lint`/`npm run build`/`npm run test`(30개) 전부 통과. 화면 캡처 검증은 하지 않음(위 방침대로) — 사용자가 직접 확인.
 
 ## 다음에 할 일 (사용자 지정 대기)
 - **M7 나머지(Zoom) 미착수**: 범위/설계는 `docs/PLAN.md` M7 절 참고(config.json에 안 쓰고 세션 동안만 유지). TOC Toggle/About을 포함한 M7의 나머지 전부는 사용자 확인 완료(위 "진행 상황" M7 줄 참고) — Zoom만 남음.
