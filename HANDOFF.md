@@ -1,6 +1,8 @@
 # HANDOFF
 
-작업 이어가기용 현재 상태 요약. (2026-08-12 기준)
+작업 이어가기용 현재 상태 요약. (2026-08-13 기준)
+
+**환경: 다음 세션부터 다시 Ubuntu(Linux)에서 진행.** 이번 macOS 세션에서 고친 것들(watcher `canonicalize()`, `core:webview:allow-print` 권한, `@media screen` 오버스크롤 차단, viewer/TOC word-wrap)은 전부 Linux에서도 무해하거나 아예 관찰되지 않는 종류(권한 추가/CSS 표준 속성/canonicalize는 이미 정규 경로인 리눅스에서 그대로 반환)라 **되돌릴 것 없음** — 코드 그대로 가져가도 됨. 반대로 macOS 전용이라 Ubuntu에서는 검증 자체가 불가능한 것: `RunEvent::Opened`(다음에 할 일 참고, 오히려 다음에 macOS로 다시 돌아왔을 때 마무리), 멀티 윈도우 조사 중 나온 "macOS Dock 아이콘 재실행(`RunEvent::Reopen`)" 관련 질문(리눅스엔 직접 대응하는 개념이 없음 — 재개 시 플랫폼별로 갈릴 수 있는 부분으로 기억해둘 것). 나머지(Rust `watcher.rs`/`WatcherRegistry`/`config.rs` 등 멀티 윈도우 조사에서 나온 코드 위치들)는 순수 Rust/아키텍처 문제라 Ubuntu에서도 그대로 이어서 작업 가능.
 
 ## 진행 상황
 
@@ -10,11 +12,11 @@
 - **M4 (Mermaid / KaTeX / Shiki 지연 로딩)**: 완료. 아래 "M4 구현 상세" 참고.
 - **M5 (Rust 백엔드 + Dev 서버 + 어댑터)**: 완료. 아래 "M5 구현 상세" 참고.
 - **M6 (Tauri 통합)**: **완료, 전체 검증 완료**(+사용자 리포트로 버그 2건 수정: Open 버튼 데드락, Tauri drag&drop). 아래 "M6 구현 상세" 참고. Packaging/Release는 원래 M6에 있었으나 **M8로 분리**(사용자 요청 — 통합과 배포는 성격이 달라서, 배포는 맨 마지막 마일스톤으로). 사용자가 실제 Tauri 앱에서 직접 확인 완료: live reload, Config 4개 버튼(Config Folder/File 열기, Reload/Reset Config), Open 다이얼로그 마지막 위치 기억, CLI 인자로 파일 열기, single-instance 라우팅. **macOS 전환 세션에서 Print 버튼도 실기로 문제 발견/수정/재확인 완료**(아래 "macOS 전환 세션" 참고) — `RunEvent::Opened`(dock 드롭/파일 연결)는 여전히 미검증.
-- **M7 (TOC Toggle / Zoom / About)**: **TOC Toggle, About 구현 완료.** TOC Toggle은 사용자가 실제 브라우저에서 클릭해 정상 동작 확인("toc toggle 버튼이 잘 동작하는 건 확인했어"). About은 사용자가 실제로 열어보며 버그(Close 버튼 제거 후 의도치 않은 outline)를 리포트/수정까지 마쳤고 그 뒤 이어서 다른 요청(버튼 라벨/Config File·Reset 삭제 등)으로 넘어감 — 즉 실사용 중이지만 최종 상태에 대한 별도의 "정상 동작" 재확인 문구는 없음. 이후 버튼 디자인 전면 개편, 라벨 한 단어화, Config File/Reset Config 기능 삭제(+Reload가 자기 치유), `Reload Config`→`Apply` 라벨, 툴바 높이 축소까지 전부 사용자가 최종 확인("좋아. 모두 좋아."/"ok. 모두 좋아."). Zoom은 미착수. 아래 "M7 구현 상세"/"다음에 할 일" 참고.
+- **M7 (TOC Toggle / Zoom / About)**: **전부 구현 완료.** TOC Toggle은 사용자가 실제 브라우저에서 클릭해 정상 동작 확인("toc toggle 버튼이 잘 동작하는 건 확인했어"). About은 사용자가 실제로 열어보며 버그(Close 버튼 제거 후 의도치 않은 outline)를 리포트/수정까지 마쳤고 그 뒤 이어서 다른 요청(버튼 라벨/Config File·Reset 삭제 등)으로 넘어감 — 즉 실사용 중이지만 최종 상태에 대한 별도의 "정상 동작" 재확인 문구는 없음. 이후 버튼 디자인 전면 개편, 라벨 한 단어화, Config File/Reset Config 기능 삭제(+Reload가 자기 치유), `Reload Config`→`Apply` 라벨, 툴바 높이 축소까지 전부 사용자가 최종 확인("좋아. 모두 좋아."/"ok. 모두 좋아."). **Zoom(macOS 전환 세션에서 구현)**: 디자인 확인(하이픈/`0`→마이너스 기호/`100%`로 교체) → 배치만 먼저 확인 → 실제 배선까지 단계적으로 사용자 확인받으며 진행, 세션 전용 상태(config.json에 안 씀)로 `-`/`100%`/`+` 3버튼 구현 완료. 아래 "M7 구현 상세"/"macOS 전환 세션 구현 상세" 참고.
 - **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리), 미착수. macOS 전환으로 계획이 Linux 전제(AppImage/`patchelf`/`libfuse2t64`)에서 벗어남 — macOS는 `.app`/`.dmg` 타깃이라 착수 시 범위를 다시 잡아야 함. 릴리스 빌드 성능 실측(<1s, <30MB)도 미착수.
 - **macOS 전환 세션 (2026-08-12)**: 개발 환경을 Ubuntu에서 macOS로 이전. 빌드/테스트 자체는 시스템 패키지 설치 없이 전부 통과했지만, 그 과정에서 macOS 전용 버그 3건(watcher의 FSEvents 경로 불일치, Print 버튼의 Tauri ACL 권한 누락, 문서 끝 스크롤 시 트랙패드 러버밴드로 툴바/상태바가 밀림)을 발견/수정하고 사용자가 Print·러버밴드는 실기로 재확인함. 그 외 사용자 요청으로 config 자기 치유 범위 확장, 구현 안 된 채로 스키마에만 남아있던 config 필드 2개(`autoReload`, `breadcrumbVisible`) 삭제, 상태바 레이아웃 조정, Apply 버튼 no-op 최적화, viewer/TOC 가로 스크롤 방지(word-wrap)까지 진행. 아래 "macOS 전환 세션 구현 상세" 참고.
 
-다음 세션은 사용자의 새 지시를 기다리는 상태에서 시작 — M7 나머지(Zoom), M8(이번엔 macOS 기준으로 범위 재검토 필요), `RunEvent::Opened` 실기 검증 중 어느 걸 먼저 할지가 다음 화두.
+다음 세션(Ubuntu)은 사용자의 새 지시를 기다리는 상태에서 시작 — M7은 이번 세션에서 전부 완료됨. 멀티 윈도우/인스턴스 지원(조사만 끝, 설계/구현 미착수), M8(macOS 기준으로 범위 재검토 필요했지만 다시 Linux면 원래 AppImage 계획이 유효할 수도 있음 — 재검토), `RunEvent::Opened` 실기 검증(단, 이건 macOS 전용이라 Ubuntu에서는 못 함) 중 어느 걸 먼저 할지가 다음 화두. 아래 "다음에 할 일" 참고.
 
 ## M2 구현 상세
 
@@ -256,6 +258,16 @@ md 파일 위치 기준으로 resolve하는 게 의미상 맞지만(Web은 브�
     1. **의도치 않은 outline**: Close 버튼(포커스 가능한 자식)이 없어지자 `showModal()`이 `<dialog>` 자신에 포커스를 줘서 브라우저 기본 focus outline이 다이얼로그 테두리에 그려짐. `.lm-about-dialog`에 `outline: none` 추가로 제거(그 안에 실제로 클릭 가능한 인터랙티브 요소가 없으니 outline을 보여줄 이유가 없음).
     2. **"다이얼로그 안/밖 어디를 클릭해도 닫히게, Esc는 유지"**: 기존엔 배경(클릭 타겟이 `<dialog>` 자신인 경우)만 닫혔음 — Close 버튼이 없어진 지금은 다이얼로그 내용 클릭도 딱히 다른 목적이 없어서, `event.target` 체크를 없애고 `<dialog>`에서 일어나는 모든 클릭(내용/배경 구분 없이)을 `close()`로 연결. Escape는 네이티브 `<dialog>` 동작이라 손대지 않음(그대로 유지).
 
+### Zoom (완료, macOS 전환 세션에서 구현)
+단계적으로 사용자 확인을 받으며 진행됨:
+1. **디자인 확인**: 처음엔 `disabled` 상태의 버튼 하나("Zoom")를 `-`/`0`/`+` 3개로 배치만 먼저 교체(기능은 안 붙임 — "디자인만 먼저 확인할게" 요청). 사용자가 "글자 크기가 같아도 -, 0, +가 각각 보이는 크기가 달라서 통일감이 없다"고 리포트 — 하이픈(`-`)은 짧고 얇은 선, `0`은 숫자 전체 높이를 채우는 타원이라 시각적 무게가 다름. 대안 3개(제대로 된 기호/단어로 교체, 문자는 유지하고 버튼 박스만 정렬, CSS로 직접 그린 아이콘)를 프리뷰와 함께 제시해 사용자가 첫 번째(수학 마이너스 기호 `−`(U+2212) + `100%`)를 선택 — 브라우저/OS zoom 컨트롤의 흔한 색상 패턴이자, 아이콘 없이 툴바가 이미 쓰는 텍스트 스타일 유지.
+2. **활성화만 먼저**: "버튼을 활성화 해줘봐" — `disabled` 속성만 제거(클릭 이벤트는 여전히 안 붙임), hover 등 정상 버튼 스타일 확인용.
+3. **실제 구현**: `docs/PLAN.md` M7 절의 설계(세션 전용 상태, config.json에 안 씀, `computeCssVars`가 이미 `config.zoom`→`--lm-zoom` 변환)를 그대로 따름.
+   - `lm-toolbar.ts`: `ZOOM_MIN`(50)/`ZOOM_MAX`(200)/`ZOOM_STEP`(10)/`ZOOM_RESET`(100) 상수 export(main.ts가 같은 숫자로 클램프하도록 단일 소스). `−`/`+`는 경계값에서 `disabled`, 중앙 버튼은 `${zoom}%`로 현재 배율 표시 + 클릭 시 리셋. `setZoom()`으로 값을 받아 렌더만 함(다른 세션 상태들과 동일 패턴).
+   - `lm-statusbar.ts`: 하드코딩됐던 "100%"를 `setZoom()`으로 실제 값 반영.
+   - `main.ts`: `zoom`을 `tocVisible`과 동일한 패턴의 세션 전용 상태로 소유. `readConfig()` 완료 시 `config.zoom`으로 초기화. `lm-zoom-out`/`lm-zoom-reset`/`lm-zoom-in` 이벤트 → 클램프 → `applyTheme({ ...currentConfig, zoom })`로 `--lm-zoom` CSS 변수만 재적용(문서 재렌더 없음, Apply 버튼과 달리 mermaid/shiki 등을 다시 굽는 게 아니라 순수 CSS 변수 갱신이라 더 가벼움) + 툴바/상태바 갱신.
+   - 검증: `npm run lint && npx tsc --noEmit && npm run build && npm run test`(30개) 전부 통과. 화면 캡처 검증은 하지 않음(위 방침대로).
+
 ## 버튼 라벨 축약 + Config File/Reset Config 기능 삭제 (신규)
 - **개선(사용자 요청): 버튼 라벨을 한 단어로.** "화면 폭이 좁을 수 있어서 버튼은 한 단어로 표시하고 싶어" — `TOC Toggle`→`TOC`, `Config Folder`→`Config`, `Reset Config`→`Reset`. `Reload Config`는 그대로 유지 — "Reload"만 쓰면 md 파일 재로딩(자동 live reload)과 config 재로딩이 헷갈릴 수 있다고 사용자가 지적, 좋은 한 단어를 아직 못 찾아서 사용자가 더 생각해보기로 함(제안했던 대안: Resync/Reconfig — 아직 미확정).
 - **개선(사용자 요청): 툴바 높이 축소.** "버튼 위/아래 padding과 margin이 좀 커서 메뉴바 높이 전체적으로 좀 커" — `layout.css`의 `lm-toolbar` 수직 padding `0.5rem`→`0.3rem`, 버튼 수직 padding `0.4rem`→`0.25rem`(수평 padding은 유지). 버튼에 `margin: 0`도 명시적으로 추가(브라우저 기본값이 이미 0이라 시각적 변화는 없지만 의도를 코드에 남겨둠).
@@ -337,8 +349,40 @@ macOS 트랙패드의 러버밴드(rubber-band) 오버스크롤 효과. Linux(We
 - 이어서 사용자가 "toc에도 횡스크롤이 생기지 않으면 좋겠어"로 확인 — `lm-toc`에도 동일하게 `overflow-wrap: break-word` + `word-break: break-word` 추가(상속되어 `a`/`li`/`ul` 전부에 적용). 긴(공백 없는) heading 제목이 고정된 `--lm-toc-width` 컬럼을 뚫지 않고 줄바꿈됨.
 - 검증: `npm run lint`/`npm run build`/`npm run test`(30개) 전부 통과. 화면 캡처 검증은 하지 않음(위 방침대로) — 사용자가 직접 확인.
 
+## 멀티 윈도우/인스턴스 지원 — 조사만 진행, 설계 중단(사용자 요청)
+
+**상태: 조사(탐색)는 끝났지만 설계 비교는 끝내지 않고 중단함. 구현 계획이 아니라 다음에 이어갈 수 있도록 남겨두는 기록.**
+
+### 배경
+M6에서 `tauri-plugin-single-instance`로 "두 번째 실행/다른 .md 파일 열기가 기존 창으로 라우팅+포커스"되는 걸 의도된 동작으로 구현하고 사용자가 직접 확인까지 마쳤었음(위 M6 검증 상태 참고). 그런데 사용자가 "LightMark는 뷰어이니 여러 instance를 동시에 실행할 수 있어야 한다"는 걸 뒤늦게 깨달음 — 지금까지 검증됐던 M6의 그 동작이 정확히 반대 방향이라는 뜻. 구현 전에 계획부터 검토하되, 계획을 다 세우지 말고 조사 결과만 문서화해달라는 요청으로 여기서 멈춤.
+
+### 조사 결과 (탐색 에이전트 2개, 완료됨 — 사실로 취급 가능)
+**프론트엔드는 이미 창별로 격리돼 있어서 손댈 필요 없음**: `frontend/src/main.ts`의 모든 모듈 최상위 상태(`currentConfig`/`tocVisible`/`zoom`/`hasDocument`/`currentDoc`/`activeWatchPath`/`unwatch`)는 각 Tauri 창(webview)이 독립된 JS 실행 컨텍스트를 갖기 때문에 자연히 창별로 분리됨. `document.querySelector` 조회들도 그 창 자신의 document 안에서만 동작. Dev 모드의 `?file=` URL 파라미터도 이미 창별로 독립적임.
+
+**"창/프로세스 하나" 전제가 박혀 있는 곳은 전부 Rust/Tauri 레이어**:
+- `src-tauri/src/lib.rs:134-144` — `tauri_plugin_single_instance::init(...)` 콜백: 두 번째 실행 시 경로를 추출해 `app.emit("open-path", path)`(전체 webview 브로드캐스트)로 쏘고, `app.get_webview_window("main")`(라벨 하드코딩) + `.set_focus()`. **바로 이게 바뀌어야 하는 부분**.
+- `lib.rs:126-129` + `cli.rs`의 `get_initial_path`/`InitialPath` — 전역 `Mutex<Option<String>>` 하나, `.take()`로 소비되는 구조라 첫 창이 가져가면 다른 창은 `None`. 창별 구분이 전혀 없음.
+- `lib.rs:15-19`의 `WatcherRegistry(Mutex<HashMap<String, FileWatcher>>)` — 파일 경로로만 키잉된 전역 맵 하나. 주석에 "LightMark only ever watches one document at a time"라고 명시. 창 두 개가 있으면 unwatch 시 서로의 watcher를 지울 수 있음.
+- `open-path` 이벤트가 두 곳(`lib.rs:139` single-instance 콜백, `lib.rs:182` macOS `RunEvent::Opened`)에서 전부 `app.emit`(브로드캐스트)로 나감. `RunEvent::Opened`는 `urls.first()`만 써서 macOS에서 여러 파일을 한 번에 "Open With"로 선택해도 첫 번째만 열림.
+- `file-changed` 이벤트(`lib.rs:86`)도 브로드캐스트, 프론트가 경로로 필터링(`platform/tauri.ts:26-31`) — 창이 하나니까 지금은 문제없이 보일 뿐.
+- `src-tauri/tauri.conf.json`의 `app.windows`는 정적 배열 하나(라벨 미지정 → 기본값 `"main"`). 런타임에 창을 만드는 코드는 어디에도 없음.
+- `src-tauri/capabilities/default.json`은 `"windows": ["main"]`으로 고정, `core:window:allow-create`/`core:webview:allow-create-webview-window` 권한 자체가 없음.
+- `backend/src/state.rs`(`state.json`)와 `backend/src/config.rs`(`config.json`의 `reload_config()` 자기 치유)는 둘 다 잠금 없는 비원자적 `fs::write` — 지금은 프로세스가 하나뿐이라 괜찮지만, 창이 여러 개(혹은 최악의 경우 프로세스가 여러 개)가 되면 동시 접근 레이스가 실제로 발생할 수 있음.
+- 모든 창이 닫혔을 때의 동작(macOS 관례: 앱은 계속 떠 있고 Dock 아이콘 클릭 시 `RunEvent::Reopen`으로 새 창 생성 vs. Windows/Linux의 일반적인 "마지막 창 닫으면 종료")에 대한 처리가 전혀 없음.
+- `backend/src/watcher.rs`의 실제 `watch_file`/`FileWatcher`는 자체 공유 상태가 없어서 이미 동시에 여러 개 떠도 안전함 — "파일 하나만" 문제는 전부 `src-tauri`의 `WatcherRegistry`에 있는 것이고 이 크레이트 잘못이 아님.
+- 이 동작을 명시하고 검증했던 문서: `docs/PLAN.md:268-271`, `docs/IPC_SPEC.md:17`, `HANDOFF.md`의 M6 관련 문단들 — 나중에 실제로 바뀌면 같이 고쳐야 함.
+
+### 검토되던(결론 안 남) 방향
+`tauri-plugin-single-instance`는 유지(두 번째 Finder 더블클릭이 여전히 같은 OS 프로세스로 합쳐지게 — 프로세스 여러 개로 늘어나는 것과 그로 인한 `config.json`/`state.json` 크로스 프로세스 레이스를 피하고, macOS 문서 앱(TextEdit/Preview 등)의 관례인 "프로세스 하나, 창 여러 개"와도 맞음)하되, 그 콜백과 `RunEvent::Opened`가 "기존 창 포커스" 대신 "새 창 생성"을 하도록 바꾸는 방향이 유력해 보였음. 창이 시작 파일을 아는 방법을 Dev 모드처럼 `?file=<path>` URL 파라미터로 통일하면 `get_initial_path`/`InitialPath`/`onOpenPath`의 절반을 통째로 없앨 수 있어 보임(코드가 오히려 줄어듦). "최소 변경안"과 "통합/정리안" 두 관점으로 비교하는 Plan 에이전트 2개를 병렬로 띄웠으나, 사용자가 "설계안 작성은 종료하고 조사만 문서화해달라"고 해서 둘 다 결론 내기 전에 중단함.
+
+### 다시 시작할 때 먼저 사용자에게 물어야 할 것
+- 툴바의 **Open** 버튼(이미 문서가 열려 있는 상태에서)이 **새 창**을 열게 할지, 지금처럼 그 창 내용을 교체할지 — OS 트리거(더블클릭, "Open With" 다중 선택)는 새 창이 맞지만, 앱 내부 버튼의 동작은 별개 결정.
+- macOS에서 창을 전부 닫아도 앱이 계속 떠 있으면서 Dock 클릭으로 새 창을 만들 수 있게 할지, 지금처럼(암묵적으로) 종료되게 둘지.
+- macOS "Open With LightMark"로 여러 파일을 한꺼번에 선택했을 때 파일당 창 하나씩 여는 것까지 이번에 같이 고칠지(지금은 `urls.first()`만 처리 — 어차피 건드리는 코드 바로 옆이라 곁들이기 좋음).
+- `config.json`/`state.json` 동시 접근 방지(예: 프로세스 내 `Mutex`)를 이번 범위에 넣을지, 별도로 미룰지.
+
 ## 다음에 할 일 (사용자 지정 대기)
-- **M7 나머지(Zoom) 미착수**: 범위/설계는 `docs/PLAN.md` M7 절 참고(config.json에 안 쓰고 세션 동안만 유지). TOC Toggle/About을 포함한 M7의 나머지 전부는 사용자 확인 완료(위 "진행 상황" M7 줄 참고) — Zoom만 남음.
-- **`RunEvent::Opened`(macOS dock 드롭/파일 연결) 실기 검증 미착수**: M6에서 구현은 됐지만 그때는 Linux 환경이라 확인 못 했던 항목. 이제 macOS라 검증 가능한 상태 — Print 버튼(macOS 전용 버그였음, 위 "macOS 전환 세션" 참고)처럼 실제로 문제가 있을 수 있음.
-- **M8(신규, 아직 미착수, M6에서 분리) — macOS 기준으로 범위 재검토 필요**: 기존 계획(`patchelf`/`libfuse2t64` 설치 후 AppImage 패키징)은 전부 Linux 전제라 macOS 전환으로 그대로 못 씀 — macOS는 `npm run tauri build`의 `bundle.targets`가 `.app`/`.dmg`로 나가는 게 기본이라 별도 패키지 설치 자체가 필요 없을 가능성이 높지만 실제로 시도해본 적은 없음. 릴리스 빌드로 시작 시간/메모리 실측(<1s, <30MB, `CLAUDE.md` 목표)도 미착수. 코드 서명/공지사항(notarization) 등 macOS 배포 특유의 절차도 착수 시점에 새로 확인 필요.
-- M7 나머지(Zoom), `RunEvent::Opened` 검증, M8 중 어느 걸 먼저 할지는 아직 사용자 지정 안 됨.
+- **멀티 윈도우/인스턴스 지원**: 조사만 끝남, 설계/구현 미착수(바로 위 섹션 참고). 재개 시 "다시 시작할 때 먼저 사용자에게 물어야 할 것" 목록부터.
+- **`RunEvent::Opened`(macOS dock 드롭/파일 연결) 실기 검증 미착수**: M6에서 구현은 됐지만 그때는 Linux 환경이라 확인 못 했던 항목. 이번 macOS 세션에서 검증할 기회가 있었지만 멀티 윈도우 필요성이 먼저 드러나서 순서가 밀림 — **다음 세션이 다시 Ubuntu라 여전히 검증 불가능**, macOS로 돌아왔을 때(멀티 윈도우 설계가 이 코드 경로를 바꿀 가능성이 높으니 그 설계가 먼저 정해진 뒤가 나음) 마무리.
+- **M8(신규, 아직 미착수, M6에서 분리) — 다시 Ubuntu 기준으로 되돌림**: macOS 전환 중엔 "AppImage 계획이 Linux 전제라 못 씀"이었지만, 다음 세션이 다시 Ubuntu이므로 원래 계획(`patchelf`/`libfuse2t64` 설치 후 `npm run tauri build`로 AppImage 등 패키징)이 다시 유효함 — macOS `.app`/`.dmg` 타깃 대응은 다음에 macOS로 돌아왔을 때 별도로. 릴리스 빌드로 시작 시간/메모리 실측(<1s, <30MB, `CLAUDE.md` 목표)도 미착수.
+- 멀티 윈도우/인스턴스 지원, `RunEvent::Opened` 검증(macOS 전용, Ubuntu에서는 불가), M8 중 어느 걸 먼저 할지는 아직 사용자 지정 안 됨. M7(TOC Toggle/Zoom/About)은 이번 세션에서 전부 완료됨.

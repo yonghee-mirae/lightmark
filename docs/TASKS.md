@@ -32,7 +32,7 @@
 
 ## Milestone 7
 - [x] TOC Toggle
-- [ ] Zoom
+- [x] Zoom
 - [x] About
 
 ## Milestone 8

@@ -14,6 +14,8 @@ Web 모드: Config 버튼 숨김 (capabilities.configFile=false)
 
 버튼 라벨은 화면 폭이 좁을 수 있어서 한 단어로 유지(사용자 요청, M7).
 
+Zoom은 버튼 하나가 아니라 3개(`−`/`100%`/`+`, M7): 각각 10% 축소/100% 리셋/10% 확대. 중앙 버튼은 현재 배율을 표시. `−`/`+`는 50~200% 경계에서 `disabled`.
+
 ## TOC
 Default Width 280px
 Resizable
