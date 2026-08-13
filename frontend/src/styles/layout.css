@@ -131,21 +131,68 @@ lm-statusbar .lm-status-zoom {
   margin-right: auto;
 }
 
+/* A row: .lm-toc-list (scrolls) + .lm-toc-resize-handle (fixed-width drag strip), side by side -
+   NOT the handle absolutely-positioned over/past the list's own edge (an earlier version did
+   that with `right: -3px`, which straddled past this element's own box and, combined with
+   overflow-y below, tripped the same implicit-overflow-x-becomes-auto computation lm-viewer's
+   word-wrap fix already dealt with once - a real horizontal scrollbar, and the handle's hit
+   region also ended up overlapping wherever the vertical scrollbar itself renders, swallowing
+   drag input for that instead of the handle - user report, both fixed by this flex layout since
+   the two are now disjoint siblings that can never occupy the same pixels). */
 lm-toc {
-  display: block;
+  display: flex;
+  /* lm-toc is itself a grid item of .lm-content, whose implicit row is sized to fill #app - but a
+     grid/flex item's automatic minimum size defaults to its content's min-content size, not 0.
+     `overflow-y: auto` directly on a block box zeroes that out (which is why this worked when
+     lm-toc itself did the scrolling, pre-refactor); moving the scrolling down to .lm-toc-list
+     means lm-toc no longer gets that automatic zeroing, so a long TOC's content-driven height
+     would otherwise stretch this cell (and the whole pane, and the grid row) to fit every heading
+     instead of clipping/scrolling - confirmed happening (real bug, not hypothetical) via a
+     headless-Chrome test that set 200 headings and measured a many-thousand-px-tall lm-toc. This
+     is the standard fix for that flex/grid gotcha. */
+  min-height: 0;
   border-right: 1px solid var(--lm-color-border);
-  overflow-y: auto;
-  /* Without this, scrolling past this pane's own boundary chains up to the document (html/body),
-     which macOS/WebKit rubber-bands - bouncing the whole page, toolbar/statusbar included, before
-     snapping back. `contain` stops that chaining while still letting this pane bounce on its own
-     boundary. Not an issue on Linux/WebKitGTK, which doesn't apply this effect by default. */
-  overscroll-behavior: contain;
   /* A heading can be arbitrarily long unbroken text (a long identifier, a URL used as a heading,
      no spaces...) - without this it overflows the fixed --lm-toc-width column, which triggers
      the same implicit-overflow-x-becomes-auto behavior as lm-viewer had (docs/PLAN.md: viewer
      word-wrap fix). Inherited by the `a`/`li`/`ul` below, so setting it once here is enough. */
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+.lm-toc-list {
+  /* min-width: 0 overrides flex items' default min-width: auto, which would otherwise let long
+     unbroken content push this wider than the column instead of wrapping/scrolling within it -
+     the same class of bug overflow-wrap/word-break above guards against, just at the flex-sizing
+     level instead of the text-breaking level. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  /* Belt-and-braces alongside overflow-wrap/word-break above - this pane must never scroll
+     horizontally (user requirement), so pin it explicitly rather than rely only on wrapping. */
+  overflow-x: hidden;
+  /* Without this, scrolling past this pane's own boundary chains up to the document (html/body),
+     which macOS/WebKit rubber-bands - bouncing the whole page, toolbar/statusbar included, before
+     snapping back. `contain` stops that chaining while still letting this pane bounce on its own
+     boundary. Not an issue on Linux/WebKitGTK, which doesn't apply this effect by default. */
+  overscroll-behavior: contain;
+}
+
+/* CLAUDE.md UI Rules: TOC must be resizable. A thin drag handle strip (lm-toc.ts's
+   pointerdown/pointermove drive the actual resize via --lm-toc-width) - transparent at rest,
+   only tinted on hover/drag so it doesn't add visual noise to the default view. `touch-action:
+   none` stops the browser from treating a touch-drag here as a page scroll/pan gesture instead
+   of handing pointermove events to the handle. */
+.lm-toc-resize-handle {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.lm-toc-resize-handle:hover,
+.lm-toc-resize-handle:active {
+  background: var(--lm-color-accent);
+  opacity: 0.4;
 }
 
 .lm-viewer-pane {
@@ -234,7 +281,10 @@ lm-toc ul {
   padding-left: 0.75rem;
 }
 
-lm-toc > ul {
+/* lm-toc.ts wraps the rendered <ul> in a .lm-toc-list div (kept separate from the resize handle
+   sibling so setToc() can replace just the list without wiping the handle out) - this is the
+   top-level list, same distinction `lm-toc ul` above draws from nested ones. */
+.lm-toc-list > ul {
   padding: 0.5rem 0.5rem 0.5rem 0.75rem;
 }
 

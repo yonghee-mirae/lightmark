@@ -2,9 +2,19 @@
 // frontend/src/types/config.ts's DEFAULT_CONFIG) so a config.json written by hand or by either
 // side round-trips without surprises.
 
+use crate::fsutil::atomic_write;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+// Guards config.json's read-modify-write cycle within this process (docs/PLAN.md: multi-window
+// support means several windows' IPC calls can hit reload_config() concurrently in the same
+// process - a plain Mutex<()> around the critical section keeps them from interleaving). This is
+// on top of, not instead of, atomic_write()'s temp-file+rename - that one's for readers in a
+// *different* process (the axum dev-server binary) never observing a half-written file; this one
+// is for two callers *in* this process not racing each other's read-then-decide-then-write.
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -67,10 +77,18 @@ fn try_load(path: &Path) -> Option<Config> {
 /// button - deleting config.json while the app is running and clicking Apply gets a clean default
 /// file back without needing to restart). Partial JSON (only some fields set) is filled in from
 /// `Config::default()` field by field via `#[serde(default)]` above.
+///
+/// The whole read-then-maybe-write cycle runs under `WRITE_LOCK` (multi-window: several windows'
+/// IPC calls can land here concurrently in the same process) - without it, one caller's read
+/// could land between another caller's "file's missing" check and its write, and read a
+/// half-written file as "broken", triggering a second, spurious self-heal write. The write itself
+/// goes through `atomic_write` (temp file + rename) so a *different process* (the axum dev-server
+/// binary, pointed at the same config directory) never observes a partially-written file either.
 pub fn reload_config() -> Config {
     let Some(path) = config_path() else {
         return Config::default();
     };
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(config) = try_load(&path) {
         return config;
     }
@@ -82,7 +100,7 @@ pub fn reload_config() -> Config {
     }
     let default = Config::default();
     // Best-effort - a failed write here shouldn't stop the caller from getting a usable config.
-    let _ = fs::write(&path, serde_json::to_string_pretty(&default).unwrap());
+    let _ = atomic_write(&path, &serde_json::to_string_pretty(&default).unwrap());
     default
 }
 

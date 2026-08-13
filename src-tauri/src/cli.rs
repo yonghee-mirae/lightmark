@@ -3,11 +3,6 @@
 // `backend/src/watcher.rs`'s `event_affects` uses.
 
 use std::path::Path;
-use std::sync::Mutex;
-
-/// Holds the path (if any) this process was launched with, until the frontend pulls it via the
-/// `get_initial_path` command.
-pub struct InitialPath(pub Mutex<Option<String>>);
 
 /// `args[0]` is always the executable itself; anything after that which isn't a flag (`-`/`--`,
 /// which `tauri dev`/Chromium/webview runtimes can prepend) is treated as the file to open.

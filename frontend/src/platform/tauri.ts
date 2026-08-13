@@ -1,4 +1,4 @@
-// Tauri mode: @tauri-apps/api invoke()/listen() bridge to the 7 IPC commands (docs/IPC_SPEC.md),
+// Tauri mode: @tauri-apps/api invoke()/listen() bridge to the 8 IPC commands (docs/IPC_SPEC.md),
 // each a thin binding in src-tauri/src/lib.rs delegating to the `backend` Rust crate. This is
 // the ONLY file allowed to import @tauri-apps/* (docs/ARCHITECTURE.md "Tauri Rules", enforced by
 // ESLint's no-restricted-imports override for this path).
@@ -32,7 +32,10 @@ export class TauriBackend implements BackendApi {
     });
     return () => {
       unlisten();
-      void invoke('unwatch_file', { path });
+      // No path argument - src-tauri now keys WatcherRegistry by the calling window's own label
+      // (docs/PLAN.md "멀티 윈도우/인스턴스 지원"), grabbed there via an injected WebviewWindow
+      // parameter rather than passed from here.
+      void invoke('unwatch_file');
     };
   }
 
@@ -48,28 +51,26 @@ export class TauriBackend implements BackendApi {
     return invoke('open_config_folder');
   }
 
-  // Not one of the 7 IPC_SPEC.md commands - lets main.ts pull the CLI/file-association path once
-  // on startup, the same pull-based shape Dev mode gets for free from the `?file=` query param.
-  getInitialPath(): Promise<string | null> {
-    return invoke<string | null>('get_initial_path');
-  }
-
-  // Fires for file-association opens / a second launch while already running (src-tauri's
-  // single-instance plugin re-emits into this same window instead of starting a new process),
-  // and for dropping a file onto the window - the window config's `dragDropEnabled` (default
-  // true) makes Tauri intercept OS-level drops before the DOM ever sees them, so
-  // lm-viewer.ts's browser dataTransfer.files-based drop handling never fires under Tauri and
-  // never gets a real path from it either; this native event is the one that actually carries a
-  // usable filesystem path.
-  onOpenPath(cb: (path: string) => void): void {
-    void listen<string>('open-path', (event) => cb(event.payload));
+  // Native OS drag&drop onto this window - the window config's `dragDropEnabled` (default true)
+  // makes Tauri intercept OS-level drops before the DOM ever sees them, so lm-viewer.ts's browser
+  // dataTransfer.files-based drop handling never fires under Tauri and never gets a real path
+  // from it either; this native event is the one that actually carries usable filesystem paths.
+  // Second-launch/file-association opens used to re-emit into this same window via an
+  // `open-path` event - that's gone now that each of those opens its own new window instead
+  // (docs/PLAN.md "멀티 윈도우/인스턴스 지원"), so this is purely drag&drop these days.
+  onFileDrop(cb: (paths: string[]) => void): void {
     void getCurrentWebview().onDragDropEvent((event) => {
-      if (event.payload.type === 'drop') {
-        const path = event.payload.paths[0];
-        if (path) {
-          cb(path);
-        }
+      if (event.payload.type === 'drop' && event.payload.paths.length > 0) {
+        cb(event.payload.paths);
       }
     });
+  }
+
+  // Lets main.ts open another file dropped alongside the first one in its own new window
+  // (docs/PLAN.md "멀티 윈도우/인스턴스 지원": dropping N files replaces this window's content
+  // with the first and opens a new window per remaining file, mirroring the macOS "Open With"
+  // multi-select rule).
+  openWindow(path: string): Promise<void> {
+    return invoke('open_new_window', { path });
   }
 }

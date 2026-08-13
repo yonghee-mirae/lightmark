@@ -6,8 +6,15 @@
 // hand-edited) grow fields no one would ever want to edit by hand.
 
 use crate::config::config_dir;
+use crate::fsutil::atomic_write;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+// Guards state.json's read-modify-write cycle within this process - same reasoning as
+// config.rs's WRITE_LOCK (multi-window: several windows can call save_last_opened_dir()
+// concurrently after each opening a file via their own Open dialog).
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -30,6 +37,9 @@ fn load_state() -> AppState {
 }
 
 /// Best-effort - failing to remember the directory isn't worth surfacing as an error to the user.
+/// Read-modify-write happens under `WRITE_LOCK` so two windows saving at once can't lose one
+/// update to the other; the write itself is atomic (temp file + rename, see `fsutil`) so a reader
+/// (this same function, from another window, or another process) never sees a half-written file.
 pub fn save_last_opened_dir(dir: &Path) -> std::io::Result<()> {
     let Some(path) = state_path() else {
         return Ok(());
@@ -37,9 +47,10 @@ pub fn save_last_opened_dir(dir: &Path) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut state = load_state();
     state.last_opened_dir = Some(dir.to_path_buf());
-    std::fs::write(&path, serde_json::to_string_pretty(&state).unwrap())
+    atomic_write(&path, &serde_json::to_string_pretty(&state).unwrap())
 }
 
 /// The directory the Open dialog should start in: the last one used, unless it's gone (deleted,

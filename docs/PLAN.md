@@ -38,6 +38,7 @@ lightmark/
       watcher.rs              # notify 래핑 + 디바운스
       config.rs               # 기본값, 병합, 경로 해석
       state.rs                # state.json(config.json과 별도) - Open 다이얼로그 마지막 위치 기억 (M6)
+      fsutil.rs               # atomic_write (임시 파일+rename) - 멀티 윈도우 지원에서 추가
       bin/devserver.rs        # #[cfg(feature = "dev-server")] axum + SSE
   src-tauri/
     Cargo.toml
@@ -90,16 +91,16 @@ export interface BackendApi {
   readConfig(): Promise<Config>;
   reloadConfig(): Promise<Config>;
   openConfigFolder(): Promise<void>;
-  // Optional: only TauriBackend implements these (M6) - Web/Dev have no "open on startup"
-  // concept (Dev gets the same job done via the `?file=` query param in main.ts instead).
-  getInitialPath?(): Promise<string | null>;
-  onOpenPath?(cb: (path: string) => void): void;
+  // Optional: only TauriBackend implements these - Web/Dev have no native window/OS concept
+  // (drag&drop onto a window, opening another window for a second file).
+  onFileDrop?(cb: (paths: string[]) => void): void;
+  openWindow?(path: string): Promise<void>;
 }
 export interface OpenedFile { path: string; name: string; content: string; }
 export type Unwatch = () => void;
 ```
 
-(M7에서 `openConfigFile()`/`resetConfig()`는 삭제됨 — 위 계약은 M6 당시가 아니라 현재 기준. M7 절 참고.)
+(M7에서 `openConfigFile()`/`resetConfig()`는 삭제됨. 멀티 윈도우/인스턴스 지원에서 `getInitialPath()`/`onOpenPath()`는 `onFileDrop()`/`openWindow()`로 대체됨 — 위 계약은 M6/M7 당시가 아니라 현재 기준. 각 해당 절 참고.)
 
 `capabilities`가 UI 분기의 단일 근거다 — `lm-toolbar`는 `capabilities.configFile`이 false면 Config 버튼을 숨긴다. 컴포넌트가 실행 모드를 직접 묻는 코드를 두지 않는다. (`capabilities.watch`는 UI에 표시되지 않고 `main.ts`가 live reload를 배선할지만 내부적으로 결정한다 — `autoReload` config 필드는 별도 토글 기능 없이 사용자 요청으로 제거됨, 아래 참고.)
 
@@ -145,6 +146,9 @@ export type Unwatch = () => void;
 
 **Breadcrumb는 고정 행이 아니라 Viewer 영역 상단의 토스트다 (UI 변경으로 확정).** 처음엔 항상 보이는 고정 높이 행(`#app` grid의 별도 row)으로 두었으나, 이후 "구분된 영역보다는 떠 있는 알림창 느낌"을 원하는 요구로 바꿨다: `#app` grid에서 breadcrumb 전용 row를 없애고, `lm-breadcrumb`를 `lm-viewer`와 함께 `.lm-viewer-pane`(`position: relative`) 안에 넣어 `position: absolute`로 얹었다. `lm-active-heading` 이벤트로 활성 heading이 바뀔 때만(`lm-viewer`가 동일 id 재호출을 이미 걸러내므로 매 이벤트가 실제 변경) 페이드인하고 1.5초 뒤 자동 페이드아웃한다(연속 변경 시 타이머 리셋). 폭 축약(전체 체인이 넘치면 `First > ... > Last`, 그래도 넘치면 First/Last 각각 CSS `text-overflow: ellipsis`) 로직은 그대로다. 축약 여부는 축소되지 않는 상태로 전체 체인을 렌더해 `scrollWidth`가 실제로 넘치는지 측정해서 판단(JS로 글자 수를 계산하지 않음)하고, 측정 기준은 Viewer 영역 폭(TOC는 침범하지 않음)이다. `ResizeObserver`로 폭 변화에 재계산한다.
 - **버그 수정(사용자 리포트, M7 이후): breadcrumb가 표시된 상태에서 문서 최상단으로 빠르게 스크롤하면(활성 heading이 없어짐, `id: null`) 즉시 사라져야 하는데, 이전 heading 활성화 때 걸어둔 `hideTimer`가 남아 있어서 그 타이머가 끝날 때까지 빈 영역만 계속 보이다가 사라짐.** `setActive(null)`이 `render()`로 내용(빈 크럼)만 갈아치우고 `lm-breadcrumb-visible` 클래스나 예약된 `hideTimer`는 그대로 뒀던 게 원인 — `show()`(활성 heading 있을 때: 클래스 추가 + 타이머 재예약)에 대응하는 `hide()`(활성 heading 없을 때: 타이머 즉시 취소 + 클래스 즉시 제거)가 없었다. `lm-breadcrumb.ts`에 `hide()`를 신설하고 `setActive(id)`가 `id`가 falsy면 `show()` 대신 `hide()`를 호출하도록 수정.
+- **발견(전체 문서 대조 세션): TOC Resizable이 애초에 구현된 적이 없었음.** `CLAUDE.md`/`UI_SPEC.md` 둘 다 TOC가 "resizable"이어야 한다고 명시하는데, `lm-toc.ts`/`layout.css`엔 리사이즈 핸들/드래그 로직이 전혀 없고 폭은 `--lm-toc-width: 280px` 고정값뿐이었다 - TOC Engine(M2)에 포함됐어야 할 요구사항이 빠진 채로 지나간 것. 문서만 조용히 낮추면 요구사항을 임의로 낮추는 셈이라 사용자에게 확인 → "지금 구현"으로 결정, Zoom/TOC Toggle과 같은 전례(세션 전용, config.json에 안 씀 - `CLAUDE.md`의 "No graphical settings editor"는 config.json 편집 경로 얘기라 세션 중 UI 조절 값엔 안 걸림)를 따라 구현: `lm-toc.ts`의 light DOM을 `.lm-toc-list`(항목)/`.lm-toc-resize-handle`(핸들) 두 자식으로 나누고(`setToc()`가 `.lm-toc-list`만 갈아치워서 파일을 열 때마다 핸들이 같이 지워지지 않게), 핸들은 `pointerdown → setPointerCapture → pointermove(160~560px 클램프, --lm-toc-width 갱신) → pointerup` 표준 패턴.
+  - **버그 수정(사용자 리포트): 세로 스크롤이 있으면 resize가 안 되고, 하면 안 된다고 못박은 가로 스크롤바가 생김.** 헤드리스 Chrome(CDP)으로 TOC에 헤딩 200개를 주입해 직접 재현·측정 - 원인은 핸들을 `position: absolute; right: -3px`로 `lm-toc` 자기 경계 밖까지 튀어나오게 배치한 것: `overflow-y: auto`인 요소에서 자식이 박스 밖으로 넘치면 overflow-wrap/word-break 수정 때 겪은 것과 같은 "overflow-x가 암묵적으로 auto가 되는" 계산이 재발동해 진짜 가로 스크롤바가 생기고, 같은 배치 때문에 핸들의 히트 영역이 실제 세로 스크롤바 자리와 겹쳐 클릭이 스크롤바한테 먼저 가로채짐. 수정: `.lm-toc-list`(`flex: 1 1 auto`)와 `.lm-toc-resize-handle`(`flex: 0 0 6px`)을 `lm-toc { display: flex }`의 서로 겹칠 수 없는 형제로 재배치.
+  - **2차 발견(같은 헤드리스 테스트): flex/grid item의 `min-height: auto` 함정.** 위 구조로 바꾸자 이번엔 `lm-toc` 자체 높이가 그리드 셀 고정 높이 대신 컨텐츠 전체 높이로 늘어나 있었음(스크롤 대신 화면 전체를 밀어버림) - `overflow-y: auto`를 `lm-toc` 자신에 걸면 자동 최소 크기가 0이 되는데, 스크롤을 자식으로 옮기며 `lm-toc`가 그 계산 혜택을 못 받게 된 것. `lm-toc`에 `min-height: 0` 명시로 수정. 헤드리스 Chrome으로 가로 스크롤 없음(`scrollWidth === clientWidth`)/세로 스크롤 있어도 핸들이 정확히 히트됨(`elementFromPoint`)을 재검증. 사용자가 실제 앱에서 최종 확인("좋아. 모두 해결됐네.").
 
 **검증**: `docs/PRD.md`를 열어 렌더/TOC 계층/스크롤 시 breadcrumb 갱신 확인. 10k줄 생성 문서에서 파싱+렌더 < 300ms (`performance.now()` 계측, `lm-statusbar`에 dev 전용 표시). Vitest로 toc/breadcrumb/slug 단위 테스트. 추가로: 느린/빠른 스크롤 양방향, 문서 맨 위/아래 경계, 좁은 폭에서 breadcrumb 축약을 수동 확인.
 
@@ -388,6 +392,22 @@ M6(Tauri 통합)에서 분리. 통합이 끝난 뒤 마지막에 하는 게 맞�
 - 코드 서명/배포 채널 등 실제 릴리스 절차(범위는 착수 시점에 확정).
 
 **검증**: `npm run tauri build` 성공(선택한 타깃 전부). 패키징된 결과물을 실제로 설치해서 열기/저장 반영/인쇄/Config 동작 전체 플로우 재확인. 시작 시간/메모리 실측치를 `CLAUDE.md`의 목표(<1s, <30MB)와 비교해 기록.
+
+---
+
+### 멀티 윈도우/인스턴스 지원 (M1~M8 마일스톤 밖, 완료)
+
+M6에서 `tauri-plugin-single-instance`로 "두 번째 실행이 기존 창으로 라우팅+포커스"를 의도된 동작으로 구현·검증했었으나, 사용자가 "LightMark는 뷰어이니 여러 인스턴스를 동시에 띄울 수 있어야 한다"고 뒤늦게 판단해 정반대 방향으로 재설계. 사용자 확인 4건: (1) 툴바 Open/창에 drag&drop → 그 창 내용 교체(기존 유지), (2) 더블클릭/CLI 재실행/macOS "Open With" → 파일마다 새 창, (3) macOS는 창을 전부 닫아도 앱 유지 + Dock 클릭 시 새 창, (4) config.json/state.json 동시 접근 방지 필요.
+
+**핵심 메커니즘**: `get_initial_path`(전역 `Mutex` pull) 대신, 창을 만들 때(첫 창 포함) URL 자체에 `?file=<percent-encoded>`를 실어 보냄 — `main.ts`의 기존 `?file=` 처리(원래 Dev 전용, `capabilities.watch`로 게이팅돼 있어 Tauri에도 그대로 적용됨)가 그대로 이를 받음. Tauri 소스(`tauri-2.11.5/src/manager/webview.rs`, `src/protocol/tauri.rs`)로 쿼리스트링이 dev/prod 양쪽에서 살아남는 것을 확인.
+
+`src-tauri/src/lib.rs`의 `open_window(app, file)` 헬퍼(IPC 커맨드 아님, Rust 내부에서만 호출)가 `tauri.conf.json`의 창 설정(`"create": false`로 자동 생성만 끔)을 복제해 `label`(`win-N`, 모듈 레벨 `AtomicU32`)/`title`/`url`만 창마다 채워 생성. single-instance 콜백과 macOS `RunEvent::Opened`(다중 URL 전부 순회)/`Reopen`(창 없을 때 새 창)/`ExitRequested`(마지막 창 닫힘만 `prevent_exit`, 프로그램적 종료는 통과)가 전부 이걸 호출. `WatcherRegistry`는 파일 경로 대신 창 라벨로 재키잉(두 창이 같은 파일을 봐도 서로 안 건드림), `on_window_event`의 `Destroyed`에서 정리. `file-changed`는 `emit_to`로 해당 창에만. `capabilities/default.json`의 `"windows"`는 `["win-*"]`.
+
+macOS 콜드스타트에서 `setup()`이 `RunEvent::Opened`보다 먼저 실행돼 빈 창이 하나 더 뜨는 레이스가 있어서, `PristineWindow`(아직 파일이 안 실린 시작 창의 라벨을 기억)로 그 창을 재사용(`navigate()`)하도록 처리 — 재사용 자체는 `open_window`에서 `cfg!(target_os = "macos")`로 게이팅돼 macOS에서만 실제로 일어남(아래 실기 검증 참고, 처음엔 이 게이팅이 빠져 있었음). `backend/src/config.rs`/`state.rs`는 `Mutex`(프로세스 내 순서 보장) + 새 `backend/src/fsutil.rs`의 `atomic_write`(임시 파일+rename, 프로세스 경계를 넘는 파일 원자성) 둘 다로 보강 — 읽기 경로도 락 안에서 돌게 해서, 쓰기 도중 읽어 "깨진 파일"로 오판해 자기 치유가 멀쩡한 config를 덮어쓰는 경우를 막음.
+
+이 설계는 Plan 에이전트로 실제 Tauri 소스(`~/.cargo/registry`에 받아져 있는 버전)를 대조 검증한 뒤, 다시 Plan 에이전트로 비평받아 실제 버그 5개(macOS 콜드스타트 레이스, `prevent_exit` 과잉 적용, 창 닫을 때 watcher 누수, `?file=`이 새로고침마다 재실행되는 문제, `url` 크레이트 direct dependency 누락)를 구현 전에 미리 잡아낸 뒤 반영했음. 상세 내역·근거 코드 인용은 `HANDOFF.md`의 "멀티 윈도우/인스턴스 지원 → 구현 완료" 참고.
+
+검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) + 백엔드(`cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`) 전부 통과. `npm run tauri dev` 실기 검증(D-Bus `busctl` tree로 창 개수 확인)도 완료 — single-instance 라우팅/창 생성 자체는 정상 동작. 검증 중 한 차례 `PristineWindow` 재사용이 macOS 게이팅 없이 Linux/Windows의 일반 재실행에도 적용돼 결정 (2)의 "OS 트리거는 새 창"을 어기는 걸 발견 → 자율 루프 중 `cfg!(target_os = "macos")` 게이팅을 추가해 수정하고 재실기 검증(재실행 후 `window/1`·`window/2` 둘 다 존재)까지 완료(상세: `HANDOFF.md`의 "실기 검증(Linux, npm run tauri dev)"/"후속 조치"). macOS 전용 부분(`Opened`/`Reopen`/`ExitRequested`, `PristineWindow` 재사용, 다이얼로그 `set_parent`)은 이 세션이 Linux라 실기 검증 불가 — `RunEvent::Opened`와 같은 처지로 문서에 미검증 남김.
 
 ---
 

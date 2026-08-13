@@ -1,22 +1,86 @@
 // Thin IPC bindings only - every command delegates to the `backend` crate (docs/PLAN.md M6:
-// "IPC 9개 커맨드를 backend 함수로 위임하는 바인딩만. 로직 금지"). The one exception is
-// `open_file`/`open_config_folder`, which need a native dialog/opener - that logic lives in the
-// `tauri-plugin-dialog`/`tauri-plugin-opener` plugins, not here.
+// "IPC 커맨드를 backend 함수로 위임하는 바인딩만. 로직 금지"). The exceptions are `open_file`/
+// `open_config_folder` (need a native dialog/opener - lives in the `tauri-plugin-dialog`/
+// `tauri-plugin-opener` plugins, not here) and window creation/lifecycle (docs/PLAN.md "멀티
+// 윈도우/인스턴스 지원" - inherently Tauri-specific, no equivalent in `backend`).
 
 mod cli;
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{
+    AppHandle, Emitter, EventTarget, Manager, State, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
-/// Active file watchers, keyed by the exact path being watched (docs/IPC_SPEC.md's
-/// `watch_file(path)`/`unwatch_file(path)` take a path, not a synthetic id - LightMark only ever
-/// watches one document at a time, per `frontend/src/main.ts`'s `activeWatchPath`).
+/// Active file watchers, keyed by the label of the window watching (docs/PLAN.md "멀티 윈도우/
+/// 인스턴스 지원") - each window only ever watches one document at a time (still true per window,
+/// just no longer true process-wide now that there can be several windows), so re-watching from
+/// the same window just replaces its old watcher same as before. Keying by window instead of by
+/// path (like before multi-window) means two windows watching the same file path no longer stomp
+/// on each other's watcher.
 #[derive(Default)]
 struct WatcherRegistry(Mutex<HashMap<String, backend::FileWatcher>>);
+
+/// The label of a window that was created blank (no file) and hasn't had anything loaded into it
+/// yet - exists only to work around a macOS-specific ordering issue: `setup()` runs (and creates
+/// the first window) *before* `application:openURLs:`/`RunEvent::Opened` can deliver the file the
+/// user actually double-clicked to launch the app, so a window with no file at all would
+/// otherwise be created every time, immediately followed by a second one with the real file. When
+/// `open_window()` is asked to open an actual file and a pristine window is on record, it reuses
+/// that window (navigates it) instead of creating a new one. The flag is cleared as soon as
+/// anything is genuinely loaded into that window - via the reuse path itself, or via the first
+/// `watch_file` call arriving from it (covers the user manually opening a file into it by hand,
+/// e.g. the toolbar Open button, before any `Opened` event arrives) - so a later, unrelated
+/// file-open is never silently routed into a window that's since been repurposed.
+///
+/// Reuse only ever fires on macOS (`open_window` gates it on `cfg!(target_os = "macos")`) - the
+/// decided behavior for every other OS trigger (double-click, CLI relaunch) is "open a new
+/// window", full stop (docs/PLAN.md 멀티 윈도우/인스턴스 지원 결정 2). Without that gate, this
+/// mechanism would also silently reuse *any* still-idle blank window on Linux/Windows for a
+/// wholly unrelated, much-later relaunch - confirmed happening in this repo's own `npm run tauri
+/// dev` smoke test (see HANDOFF.md's "실기 검증" section) before this gate was added.
+#[derive(Default)]
+struct PristineWindow(Mutex<Option<String>>);
+
+/// Every window gets a unique label (`win-0`, `win-1`, ...) - a plain module-level counter rather
+/// than managed state, since routing a single atomic through `State` buys nothing here. A "find
+/// the first unused `win-N`" scheme was considered instead and rejected: it's TOCTOU-racy, and
+/// window creation is genuinely concurrent here (a single-instance callback on one thread, a
+/// macOS multi-file-select loop on another).
+static NEXT_WINDOW: AtomicU32 = AtomicU32::new(0);
+
+fn next_window_id() -> u32 {
+    NEXT_WINDOW.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Spreads new windows out diagonally so they don't all spawn stacked exactly on top of each
+/// other (`.center()` doesn't help - it's equally identical for every window).
+fn cascade_position(id: u32) -> (f64, f64) {
+    let offset = f64::from(id % 10) * 24.0;
+    (offset, offset)
+}
+
+fn encode_file_query(path: &str) -> String {
+    url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("file", path)
+        .finish()
+}
+
+/// Clears `PristineWindow` if it's currently recording `label` - shared by the `watch_file`
+/// command (a real document just loaded into that window) and the window-destroyed handler (the
+/// window is gone, so there's nothing left to reuse).
+fn clear_pristine_if_matching(app: &AppHandle, label: &str) {
+    let pristine = app.state::<PristineWindow>();
+    let mut guard = pristine.0.lock().unwrap_or_else(|e| e.into_inner());
+    if guard.as_deref() == Some(label) {
+        *guard = None;
+    }
+}
 
 /// Matches `frontend/src/platform/backend.ts`'s `OpenedFile`.
 #[derive(serde::Serialize)]
@@ -33,6 +97,59 @@ fn file_name_of(path: &str) -> String {
         .unwrap_or_else(|| path.to_string())
 }
 
+/// Opens a window, optionally with a file already loaded into it via a `?file=` query param on
+/// its own URL (docs/PLAN.md "멀티 윈도우/인스턴스 지원") rather than an IPC pull - `main.ts`
+/// already has a `?file=` handler (originally Dev-mode-only), so every window (including the
+/// very first one at cold start) just reuses it for free. On macOS only, reuses a still-blank
+/// `PristineWindow` instead of creating a new one when one is on record - see that type's doc
+/// comment for why this is macOS-only.
+fn open_window(app: &AppHandle, file: Option<&str>) -> tauri::Result<WebviewWindow> {
+    if let Some(f) = file {
+        if cfg!(target_os = "macos") {
+            let pristine = app.state::<PristineWindow>();
+            let recorded = pristine.0.lock().unwrap_or_else(|e| e.into_inner()).take();
+            if let Some(label) = recorded {
+                if let Some(window) = app.get_webview_window(&label) {
+                    let mut url = window.url()?;
+                    url.set_query(Some(&encode_file_query(f)));
+                    window.navigate(url)?;
+                    let _ = window.set_focus();
+                    return Ok(window);
+                }
+            }
+        }
+    }
+
+    let id = next_window_id();
+    let label = format!("win-{id}");
+    let mut cfg = app.config().app.windows[0].clone();
+    cfg.label = label.clone();
+    cfg.title = match file {
+        Some(f) => format!("LightMark — {}", file_name_of(f)),
+        None => "LightMark".into(),
+    };
+    cfg.url = WebviewUrl::App(
+        match file {
+            Some(f) => format!("index.html?{}", encode_file_query(f)),
+            None => "index.html".into(),
+        }
+        .into(),
+    );
+    let (x, y) = cascade_position(id);
+    let window = WebviewWindowBuilder::from_config(app, &cfg)?
+        .position(x, y)
+        .build()?;
+
+    if file.is_none() {
+        app.state::<PristineWindow>()
+            .0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .replace(label);
+    }
+    Ok(window)
+}
+
 // Must be `async fn`, even though nothing here is awaited: a plain (non-async) #[tauri::command]
 // runs inline on whatever thread handles the IPC call - the main/GTK thread on Linux - and
 // `blocking_pick_file()` needs that same main loop free to actually show and respond to the
@@ -40,10 +157,11 @@ fn file_name_of(path: &str) -> String {
 // its async runtime (a background thread) instead, matching the plugin's own naming
 // ("blocking_") - it's meant to be called from anywhere *but* the main thread.
 #[tauri::command]
-async fn open_file(app: AppHandle) -> Result<Option<OpenedFile>, String> {
+async fn open_file(app: AppHandle, window: WebviewWindow) -> Result<Option<OpenedFile>, String> {
     let mut dialog = app
         .dialog()
         .file()
+        .set_parent(&window)
         .add_filter("Markdown", &["md", "markdown"]);
     if let Some(dir) = backend::initial_open_dir() {
         dialog = dialog.set_directory(dir);
@@ -74,25 +192,37 @@ fn read_file(path: String) -> Result<String, String> {
 #[tauri::command]
 fn watch_file(
     app: AppHandle,
+    window: WebviewWindow,
     registry: State<WatcherRegistry>,
     path: String,
 ) -> Result<(), String> {
-    let mut watchers = registry.0.lock().unwrap();
-    // Re-watching the same path (e.g. reopening the same file) just replaces the old watcher -
-    // dropping the previous `FileWatcher` value stops it.
+    let label = window.label().to_string();
+    clear_pristine_if_matching(&app, &label);
     let target = Path::new(&path).to_path_buf();
-    let event_path = path.clone();
+    let emit_label = label.clone();
     let watcher = backend::watch_file(&target, move || {
-        let _ = app.emit("file-changed", &event_path);
+        let _ = app.emit_to(
+            EventTarget::webview_window(&emit_label),
+            "file-changed",
+            &path,
+        );
     })
     .map_err(|e| e.to_string())?;
-    watchers.insert(path, watcher);
+    registry
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(label, watcher);
     Ok(())
 }
 
 #[tauri::command]
-fn unwatch_file(registry: State<WatcherRegistry>, path: String) {
-    registry.0.lock().unwrap().remove(&path);
+fn unwatch_file(window: WebviewWindow, registry: State<WatcherRegistry>) {
+    registry
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(window.label());
 }
 
 #[tauri::command]
@@ -120,31 +250,51 @@ fn open_config_folder(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Not one of docs/IPC_SPEC.md's 7 commands - a small addition so the frontend can pull the
-/// CLI/file-association path once on startup (pull, not push, avoids any race with page load;
-/// same shape as the `?file=` query param Dev mode already uses).
+/// Lets the frontend ask for another window with a specific file (docs/PLAN.md "멀티 윈도우/
+/// 인스턴스 지원") - used when several files are dropped onto one window at once: the first
+/// replaces that window's content in place (already handled purely in the frontend), the rest
+/// each get their own new window via this command.
 #[tauri::command]
-fn get_initial_path(app: AppHandle) -> Option<String> {
-    app.state::<cli::InitialPath>().0.lock().unwrap().take()
+fn open_new_window(app: AppHandle, path: String) -> Result<(), String> {
+    open_window(&app, Some(&path))
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            // A second launch (e.g. double-clicking another .md file) hands its argv/cwd here
-            // instead of starting a second process - docs/PLAN.md M5's "single document" design
-            // (`frontend/src/main.ts`'s `activeWatchPath`) means one window is the right model.
-            if let Some(path) = cli::extract_path_arg(&argv, Path::new(&cwd)) {
-                let _ = app.emit("open-path", path);
-            }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_focus();
-            }
+            // A second launch (double-click, `lightmark <file>` from a terminal) hands its
+            // argv/cwd here instead of starting a second process - docs/PLAN.md "멀티 윈도우/
+            // 인스턴스 지원": each one now opens its own new window rather than routing into the
+            // existing one. Dispatched via async_runtime::spawn rather than run inline: this
+            // callback's own thread differs per platform (a zbus worker on Linux, a tokio task on
+            // macOS, but *the main thread itself, re-entrantly inside the plugin's hidden
+            // window's WndProc* on Windows) - spawning normalizes all three onto a clean point in
+            // the event loop instead of relying on that reentrancy being safe.
+            let path = cli::extract_path_arg(&argv, Path::new(&cwd));
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = open_window(&app, path.as_deref());
+            });
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(WatcherRegistry::default())
+        .manage(PristineWindow::default())
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                let label = window.label();
+                window
+                    .state::<WatcherRegistry>()
+                    .0
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(label);
+                clear_pristine_if_matching(&window.app_handle().clone(), label);
+            }
+        })
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -157,7 +307,7 @@ pub fn run() {
                 &std::env::args().collect::<Vec<_>>(),
                 &std::env::current_dir()?,
             );
-            app.manage(cli::InitialPath(Mutex::new(initial)));
+            open_window(&app.handle().clone(), initial.as_deref())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -168,19 +318,45 @@ pub fn run() {
             read_config,
             reload_config,
             open_config_folder,
-            get_initial_path,
+            open_new_window,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(move |_app_handle, _event| {
             // macOS-only: "Open With LightMark" / dropping a file on the dock icon delivers here
             // rather than via argv (unverified on real macOS hardware - implemented from the
-            // documented API shape only, see HANDOFF.md).
+            // documented API shape only, see HANDOFF.md), as does clicking the dock icon when no
+            // windows are open, and the "closed the last window" exit request this app now
+            // intentionally survives so Reopen has something to react to.
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Opened { urls } = &_event {
-                if let Some(path) = urls.first().and_then(|u| u.to_file_path().ok()) {
-                    let _ = _app_handle.emit("open-path", path.to_string_lossy().into_owned());
+            match &_event {
+                tauri::RunEvent::Opened { urls, .. } => {
+                    // `.filter_map` (not `.first()`) - one new window per file (docs/PLAN.md:
+                    // macOS "Open With" multi-select). Also skips non-file URLs (Opened can carry
+                    // deep links), so those can't each spawn a blank window.
+                    for path in urls.iter().filter_map(|u| u.to_file_path().ok()) {
+                        let _ = open_window(_app_handle, Some(&path.to_string_lossy()));
+                    }
                 }
+                tauri::RunEvent::Reopen {
+                    has_visible_windows,
+                    ..
+                } => {
+                    if !has_visible_windows {
+                        let _ = open_window(_app_handle, None);
+                    }
+                }
+                tauri::RunEvent::ExitRequested { code, api, .. } => {
+                    // Only swallow the "closed the last window" quit (that's the only case where
+                    // `code` is `None`) - a real `AppHandle::exit(0)` also fires ExitRequested and
+                    // must be allowed through, or the app becomes unquittable via any
+                    // programmatic path. Cmd+Q itself bypasses this entirely (goes straight to
+                    // `terminate:`), so this only ever governs the last-window-closed case.
+                    if code.is_none() {
+                        api.prevent_exit();
+                    }
+                }
+                _ => {}
             }
         });
 }

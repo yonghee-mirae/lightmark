@@ -4,6 +4,7 @@
 
 pub mod config;
 pub mod file;
+mod fsutil;
 pub mod state;
 pub mod watcher;
 

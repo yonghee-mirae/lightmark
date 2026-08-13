@@ -35,10 +35,13 @@ export interface BackendApi {
   readConfig(): Promise<Config>;
   reloadConfig(): Promise<Config>;
   openConfigFolder(): Promise<void>;
-  // Optional: only TauriBackend implements these. There's no "open on startup" concept in
-  // Web/Dev - Dev mode gets the same job done via the `?file=` query param directly in main.ts.
-  getInitialPath?(): Promise<string | null>;
-  onOpenPath?(cb: (path: string) => void): void;
+  // Optional: only TauriBackend implements these - Web/Dev have no concept of a native OS window
+  // to drop a file onto or open another instance of (docs/PLAN.md "멀티 윈도우/인스턴스 지원").
+  // Each window (including the very first one) gets its initial file via its own `?file=` URL
+  // instead of a separate pull call - main.ts's existing `?file=` handling covers Tauri for free,
+  // so there's no `getInitialPath`-style method here at all anymore.
+  onFileDrop?(cb: (paths: string[]) => void): void;
+  openWindow?(path: string): Promise<void>;
 }
 
 // Mode selection lives here and only here (docs/PLAN.md architecture table):

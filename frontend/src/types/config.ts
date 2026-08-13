@@ -13,8 +13,9 @@ export interface Config {
   katex: boolean;
   printUseLightTheme: boolean;
   // Max viewer content width in px. `0` means unlimited (fills the viewer pane, docs/PLAN.md M7) -
-  // a user-entered value (via lm-statusbar's width input) caps it instead. Not a boolean switch
-  // (user feedback) - the limit itself is the value the user types, not just an on/off.
+  // any other value caps it. Editable only via config.json (CLAUDE.md Config Rules - no graphical
+  // settings editor); lm-statusbar shows the current value read-only ("Width: Full"/"{n}px"). Not
+  // a boolean switch (user feedback) - the limit itself is the value the user sets, not an on/off.
   viewerMaxWidth: number;
 }
 

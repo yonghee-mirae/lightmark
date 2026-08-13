@@ -13,16 +13,35 @@ export interface TocSelectDetail {
   id: string;
 }
 
+// CLAUDE.md UI Rules requires the TOC to be resizable, in px, via a drag handle on its own right
+// edge - session-only (like Zoom/TOC-Toggle, docs/PLAN.md M7), not written back to config.json
+// (CLAUDE.md Config Rules: no graphical settings editor). Resets to tokens.css's --lm-toc-width
+// default on next launch.
+const MIN_WIDTH = 160;
+const MAX_WIDTH = 560;
+
 export class LmToc extends HTMLElement {
   private activeId: string | null = null;
+  private listEl: HTMLElement | null = null;
+  private handleEl: HTMLElement | null = null;
+  private dragStartX = 0;
+  private dragStartWidth = 0;
 
   connectedCallback(): void {
-    this.textContent = '';
+    this.replaceChildren();
+    this.listEl = document.createElement('div');
+    this.listEl.className = 'lm-toc-list';
+    this.handleEl = document.createElement('div');
+    this.handleEl.className = 'lm-toc-resize-handle';
+    this.appendChild(this.listEl);
+    this.appendChild(this.handleEl);
     this.addEventListener('click', this.handleClick);
+    this.handleEl.addEventListener('pointerdown', this.handlePointerDown);
   }
 
   disconnectedCallback(): void {
     this.removeEventListener('click', this.handleClick);
+    this.handleEl?.removeEventListener('pointerdown', this.handlePointerDown);
   }
 
   private handleClick = (event: MouseEvent): void => {
@@ -35,12 +54,44 @@ export class LmToc extends HTMLElement {
     }
   };
 
+  // Pointer capture (rather than document-level listeners) keeps drag tracking working even once
+  // the pointer leaves the handle/this element, and needs no manual cleanup beyond the drag's own
+  // pointerup/pointercancel - nothing to leak if the component is ever removed mid-drag.
+  private handlePointerDown = (event: PointerEvent): void => {
+    if (!this.handleEl) {
+      return;
+    }
+    event.preventDefault();
+    this.dragStartX = event.clientX;
+    this.dragStartWidth = this.offsetWidth;
+    this.handleEl.setPointerCapture(event.pointerId);
+    this.handleEl.addEventListener('pointermove', this.handlePointerMove);
+    this.handleEl.addEventListener('pointerup', this.handlePointerUp);
+    this.handleEl.addEventListener('pointercancel', this.handlePointerUp);
+  };
+
+  private handlePointerMove = (event: PointerEvent): void => {
+    const width = this.dragStartWidth + (event.clientX - this.dragStartX);
+    const clamped = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width));
+    document.documentElement.style.setProperty('--lm-toc-width', `${clamped}px`);
+  };
+
+  private handlePointerUp = (event: PointerEvent): void => {
+    this.handleEl?.releasePointerCapture(event.pointerId);
+    this.handleEl?.removeEventListener('pointermove', this.handlePointerMove);
+    this.handleEl?.removeEventListener('pointerup', this.handlePointerUp);
+    this.handleEl?.removeEventListener('pointercancel', this.handlePointerUp);
+  };
+
   setToc(nodes: TocNode[]): void {
-    this.replaceChildren();
+    if (!this.listEl) {
+      return;
+    }
+    this.listEl.replaceChildren();
     if (nodes.length === 0) {
       return;
     }
-    this.appendChild(this.renderList(nodes));
+    this.listEl.appendChild(this.renderList(nodes));
   }
 
   setActive(id: string | null): void {

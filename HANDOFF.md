@@ -20,7 +20,7 @@
 - **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리). 다시 Ubuntu로 돌아와서 원래 Linux 전제(AppImage/`patchelf`/`libfuse2t64`) 계획이 다시 유효함. **앱 아이콘은 완료**(사용자가 `npm run tauri icon`으로 생성한 아이콘 세트 적용, `bundle.icon` 순서 개선, `enableGTKAppId` 활성화 — 아래 "앱 아이콘" 참고, dock 아이콘 표시만 패키징 이후 재검토로 보류). AppImage 등 실제 패키징, 릴리스 빌드 성능 실측(<1s, <30MB)은 아직 미착수.
 - **macOS 전환 세션 (2026-08-12)**: 개발 환경을 Ubuntu에서 macOS로 이전. 빌드/테스트 자체는 시스템 패키지 설치 없이 전부 통과했지만, 그 과정에서 macOS 전용 버그 3건(watcher의 FSEvents 경로 불일치, Print 버튼의 Tauri ACL 권한 누락, 문서 끝 스크롤 시 트랙패드 러버밴드로 툴바/상태바가 밀림)을 발견/수정하고 사용자가 Print·러버밴드는 실기로 재확인함. 그 외 사용자 요청으로 config 자기 치유 범위 확장, 구현 안 된 채로 스키마에만 남아있던 config 필드 2개(`autoReload`, `breadcrumbVisible`) 삭제, 상태바 레이아웃 조정, Apply 버튼 no-op 최적화, viewer/TOC 가로 스크롤 방지(word-wrap)까지 진행. 아래 "macOS 전환 세션 구현 상세" 참고.
 
-**현재(2026-08-13, Ubuntu 세션 진행 중)**: M7 전부 완료+확인, 인쇄 페이지 잘림 버그는 원인 확정 후 "알려진 한계로 받아들이기"로 종결, `RunEvent::Opened`도 사용자 확인 완료, 앱 아이콘도 적용 완료(dock 표시만 패키징 이후로 보류). 남은 건 **M8(패키징)**과 **멀티 윈도우/인스턴스 지원**(조사만 끝, 설계 미착수) 둘 중 어느 걸 먼저 할지 — 사용자 지정 대기. 아래 "다음에 할 일" 참고.
+**현재(2026-08-13, Ubuntu 세션 진행 중)**: M7 전부 완료+확인, 인쇄 페이지 잘림 버그는 원인 확정 후 "알려진 한계로 받아들이기"로 종결, `RunEvent::Opened`도 사용자 확인 완료, 앱 아이콘도 적용 완료(dock 표시만 패키징 이후로 보류). **멀티 윈도우/인스턴스 지원 구현 완료 + `npm run tauri dev` 실기 검증까지 완료**(조사 → 설계 결정 4건 → 실제 구현 → 실기 검증, 아래 "멀티 윈도우/인스턴스 지원 → 구현 완료"/"실기 검증" 참고). 검증 중 발견된 설계 범위 이탈(`PristineWindow` 재사용이 결정 #2를 어기고 Linux/Windows 재실행에도 적용되던 문제)은 자율 루프 중 macOS 전용으로 스코프를 좁혀 결정 #2에 맞게 수정, 재검증까지 완료(위 "후속 조치" 참고) — **사용자가 원래대로(일반 재사용) 되돌리길 원하면 알려달라는 요청만 남음**, 그 외엔 막힌 것 없음. **전체 문서 대조 후 TOC Resizable(CLAUDE.md 요구사항인데 미구현 상태였던 것)도 발견 → 구현 → 부수 버그 2건(가로 스크롤바, 스크롤 있을 때 resize 안 됨) 수정까지 사용자 확인 완료.** 남은 건 **M8(패키징)** — 아래 "다음에 할 일" 참고.
 
 ## M2 구현 상세
 
@@ -401,7 +401,9 @@ macOS 트랙패드의 러버밴드(rubber-band) 오버스크롤 효과. Linux(We
 - 이어서 사용자가 "toc에도 횡스크롤이 생기지 않으면 좋겠어"로 확인 — `lm-toc`에도 동일하게 `overflow-wrap: break-word` + `word-break: break-word` 추가(상속되어 `a`/`li`/`ul` 전부에 적용). 긴(공백 없는) heading 제목이 고정된 `--lm-toc-width` 컬럼을 뚫지 않고 줄바꿈됨.
 - 검증: `npm run lint`/`npm run build`/`npm run test`(30개) 전부 통과. 화면 캡처 검증은 하지 않음(위 방침대로) — 사용자가 직접 확인.
 
-## 멀티 윈도우/인스턴스 지원 — 조사만 진행, 설계 중단(사용자 요청)
+## 멀티 윈도우/인스턴스 지원 — 조사 완료 + 설계 결정 4건 확정, 구현 착수 전
+
+**상태 갱신**: 아래 "다시 시작할 때 먼저 사용자에게 물어야 할 것" 4개 질문에 전부 답이 나왔음(진행 상황은 해당 목록 참고) — 조사만 하고 멈췄던 이전 상태에서, 이제 설계/구현을 실제로 시작할 수 있는 상태로 넘어옴.
 
 **상태: 조사(탐색)는 끝났지만 설계 비교는 끝내지 않고 중단함. 구현 계획이 아니라 다음에 이어갈 수 있도록 남겨두는 기록.**
 
@@ -427,11 +429,53 @@ M6에서 `tauri-plugin-single-instance`로 "두 번째 실행/다른 .md 파일 
 ### 검토되던(결론 안 남) 방향
 `tauri-plugin-single-instance`는 유지(두 번째 Finder 더블클릭이 여전히 같은 OS 프로세스로 합쳐지게 — 프로세스 여러 개로 늘어나는 것과 그로 인한 `config.json`/`state.json` 크로스 프로세스 레이스를 피하고, macOS 문서 앱(TextEdit/Preview 등)의 관례인 "프로세스 하나, 창 여러 개"와도 맞음)하되, 그 콜백과 `RunEvent::Opened`가 "기존 창 포커스" 대신 "새 창 생성"을 하도록 바꾸는 방향이 유력해 보였음. 창이 시작 파일을 아는 방법을 Dev 모드처럼 `?file=<path>` URL 파라미터로 통일하면 `get_initial_path`/`InitialPath`/`onOpenPath`의 절반을 통째로 없앨 수 있어 보임(코드가 오히려 줄어듦). "최소 변경안"과 "통합/정리안" 두 관점으로 비교하는 Plan 에이전트 2개를 병렬로 띄웠으나, 사용자가 "설계안 작성은 종료하고 조사만 문서화해달라"고 해서 둘 다 결론 내기 전에 중단함.
 
-### 다시 시작할 때 먼저 사용자에게 물어야 할 것
-- 툴바의 **Open** 버튼(이미 문서가 열려 있는 상태에서)이 **새 창**을 열게 할지, 지금처럼 그 창 내용을 교체할지 — OS 트리거(더블클릭, "Open With" 다중 선택)는 새 창이 맞지만, 앱 내부 버튼의 동작은 별개 결정.
-- macOS에서 창을 전부 닫아도 앱이 계속 떠 있으면서 Dock 클릭으로 새 창을 만들 수 있게 할지, 지금처럼(암묵적으로) 종료되게 둘지.
-- macOS "Open With LightMark"로 여러 파일을 한꺼번에 선택했을 때 파일당 창 하나씩 여는 것까지 이번에 같이 고칠지(지금은 `urls.first()`만 처리 — 어차피 건드리는 코드 바로 옆이라 곁들이기 좋음).
-- `config.json`/`state.json` 동시 접근 방지(예: 프로세스 내 `Mutex`)를 이번 범위에 넣을지, 별도로 미룰지.
+### 다시 시작할 때 먼저 사용자에게 물어야 할 것 (진행 상황 아래)
+- ~~툴바의 **Open** 버튼(이미 문서가 열려 있는 상태에서)이 **새 창**을 열게 할지, 지금처럼 그 창 내용을 교체할지~~ — **결정됨(사용자 확인)**: "툴바 Open 버튼이나 창에 drag&drop은 해당 창에서 바로 문서가 바뀌는 게 맞아." 앱 내부 트리거(툴바 Open, 창에 drag&drop)는 **그 창 내용을 교체**. OS 트리거(더블클릭, "Open With" 다중 선택, CLI 인자)는 **새 창** — 이 둘은 별개 결정이라는 전제가 맞았음. 기존 코드(`lm-viewer`의 drop 핸들러가 `loadFile()`로 현재 창 내용 교체, 툴바 Open도 동일)는 그대로 두면 됨 — 새 창을 만드는 로직은 오직 OS 트리거(single-instance 콜백/`RunEvent::Opened`) 쪽에만 추가하면 된다는 뜻.
+- ~~macOS에서 창을 전부 닫아도 앱이 계속 떠 있으면서 Dock 클릭으로 새 창을 만들 수 있게 할지~~ — **결정됨(사용자 확인)**: "macOS에서는 창을 모두 닫아도 앱이 떠 있는게 맞아." macOS 관례(`RunEvent::Reopen`으로 Dock 클릭 시 새 창) 그대로 구현. Windows/Linux는 이 관례 자체가 없으니 별개로 "마지막 창 닫으면 종료" 유지(플랫폼별로 갈릴 부분이라고 이미 메모해뒀던 대로).
+- ~~macOS "Open With LightMark"로 여러 파일을 한꺼번에 선택했을 때 파일당 창 하나씩 여는 것까지 이번에 같이 고칠지~~ — **결정됨(사용자 확인)**: "여러 파일을 한꺼번에 열면 각각 창이 하나씩 열려야 해." `RunEvent::Opened`의 `urls.first()`만 쓰던 걸 전체 순회하도록 고쳐서, 파일마다 새 창 하나씩 열도록 구현.
+- ~~`config.json`/`state.json` 동시 접근 방지를 이번 범위에 넣을지~~ — **결정됨(사용자 확인)**: "state.json 접근은 당연히 동시접근을 막아야지." 이번 범위에 포함 — `backend::state.rs`(state.json)/`backend::config.rs`(`reload_config()`의 config.json 쓰기) 둘 다 지금은 잠금 없는 비원자적 `fs::write`라, 프로세스 내 `Mutex`(또는 그에 준하는 직렬화 장치)로 보호 필요.
+
+**네 가지 질문 전부 결정됨 — 설계/구현 재개 가능.**
+
+### 구현 완료
+
+사용자가 "구현 계획 세워"로 요청 → Plan 에이전트로 실제 Tauri v2.11.5 소스(`~/.cargo/registry`에 받아져 있는 `tauri-2.11.5`/`tauri-runtime-wry-2.11.4`/`tauri-utils-2.9.3`/`tao-0.35.3`)를 직접 읽어 API를 하나하나 검증한 뒤, 그 초안을 Plan 에이전트로 한 번 더 비평받아 실제 버그 5개(macOS 콜드스타트 시 빈 창 하나가 더 뜨는 레이스, `prevent_exit()`이 프로그램적 종료까지 막아버리는 문제, 창 닫을 때 watcher가 정리 안 되는 누수, `?file=`이 새로고침마다 재실행되는 문제, `url` 크레이트 direct dependency 누락)와 락 설계의 허점 몇 가지를 미리 잡아내고서 구현. 계획 전문은 `/home/tramamte/.claude/plans/elegant-fluttering-steele.md`에 남아있음.
+
+**핵심 메커니즘: 모든 창이 IPC pull 대신 자기 URL로 초기 파일을 받음.** `get_initial_path`(전역 `Mutex<Option<String>>` pull)를 없애고, 창을 만들 때(첫 창 포함) URL 자체에 `?file=<percent-encoded>`를 실어 보냄 — `main.ts`의 기존 `?file=` 처리(원래 Dev 전용, `capabilities.watch`로 게이팅돼 있어 Tauri에도 이미 적용 가능했음)가 그대로 이걸 받아준다. `tauri-2.11.5/src/manager/webview.rs`(쿼리스트링이 `Url::join`을 그대로 통과)와 `src/protocol/tauri.rs`(prod 커스텀 프로토콜이 애셋을 찾기 전에 `?`/`#`를 명시적으로 잘라냄)를 직접 읽어서 dev/prod 모두에서 동작함을 확인.
+
+**`src-tauri/src/lib.rs`**:
+- `tauri.conf.json`의 창 설정에 `"create": false` 추가(배열 자체는 안 지움 — `WindowConfig::create`가 존재하고 그 자체 문서 주석이 `WebviewWindowBuilder::from_config`와 짝지어 쓰라고 안내함). `open_window(app, file: Option<&str>)` 헬퍼가 이 설정을 복제해 `label`/`title`/`url`만 창마다 다르게 채워 만듦 — title/size/minSize/resizable 등을 Rust 리터럴로 중복 선언하지 않아도 되고 스키마 검증도 그대로 받음.
+- 창 라벨은 모듈 레벨 `static NEXT_WINDOW: AtomicU32`(managed state로 안 감쌈 — `State`로 감싸봐야 얻는 게 없음)로 `win-0`, `win-1`, ... 순서 부여. "비어있는 win-N 찾기" 방식은 검토했지만 TOCTOU 레이스가 있어 기각(창 생성이 진짜로 동시에 일어날 수 있음 — single-instance 콜백 스레드 하나, macOS 다중 선택 루프가 또 다른 스레드).
+- **macOS 콜드스타트 레이스(Plan 에이전트가 잡아낸 버그)**: `setup()`은 `application:openURLs:`(`RunEvent::Opened`)보다 먼저 실행돼서, 더블클릭으로 실행해도 일단 빈 창 하나가 만들어지고 그 직후 파일이 든 두 번째 창이 뜨는 문제가 생길 뻔함. `PristineWindow(Mutex<Option<String>>)`로 "아직 아무것도 안 실린 시작 창"의 라벨을 기억해뒀다가, 실제 파일 오픈 요청이 오면 새 창을 만드는 대신 그 창을 `navigate()`로 재사용 — 재사용 즉시(또는 `watch_file`에 그 창 라벨로 첫 요청이 들어오는 시점에, 수동으로 그 창에 파일을 연 경우까지 커버) 플래그를 지워서, 나중에 무관한 파일-열기가 이미 다른 용도로 쓰이고 있는 창을 조용히 가로채는 일이 없도록 함.
+- **`prevent_exit()` 과잉 적용(Plan 에이전트가 잡아낸 버그)**: `RunEvent::ExitRequested`가 "마지막 창 닫힘"뿐 아니라 `AppHandle::exit(0)` 같은 프로그램적 종료에도 뜬다(`code: Some(_)`) — `code.is_none()`일 때만 `prevent_exit()`을 부르도록 게이팅해서 진짜 종료 요청까지 막아버리는 걸 방지. Cmd+Q는 이 경로 자체를 안 타므로(`terminate:`로 바로 감) 영향 없음.
+- **`WatcherRegistry`를 파일 경로 대신 창 라벨로 재키잉** — 두 창이 같은 파일을 봐도 서로의 watcher를 안 지움. `watch_file`/`unwatch_file`에 `WebviewWindow`를 주입받아 `.label()`로 자동으로 알아냄(프론트 API는 안 바뀜 — `unwatch_file`은 이제 `path` 인자 자체가 없어짐, 프론트도 그에 맞춰 안 보냄).
+- **창 닫을 때 watcher 누수(Plan 에이전트가 잡아낸 버그)**: 지금까지 `unwatch_file`을 호출해주는 코드가 창 닫힘에 안 걸려 있었음 — 창 하나일 땐 최대 누수 1개로 유계였지만, 라벨로 재키잉한 뒤로는 프로세스 수명 내내 안 지워지는 무한 누수가 될 뻔함. `.on_window_event`로 `WindowEvent::Destroyed`를 잡아서 그 라벨의 watcher/pristine 플래그를 정리.
+- `file-changed` 이벤트를 전체 브로드캐스트에서 `app.emit_to(EventTarget::webview_window(label), ...)`로 좁힘 — N개 창이 매번 저장할 때마다 다 깨서 경로 비교할 필요 없음(프론트의 기존 경로 필터는 watch/unwatch 레이스 방지용으로 그대로 유지).
+- `open_file`의 네이티브 다이얼로그에 `window: WebviewWindow` 주입 + `.set_parent(&window)` — 창이 여러 개면 어느 창에 딸린 다이얼로그인지가 실제로 중요해짐(특히 macOS의 시트 동작).
+- 새 IPC 커맨드 `open_new_window(path)` 추가 — 한 창에 파일을 여러 개 drag&drop했을 때, 첫 파일은 그 창 내용을 교체(프론트에서 기존 방식대로)하고 나머지 파일 각각에 대해 이 커맨드로 새 창을 연다.
+- single-instance 콜백은 `tauri::async_runtime::spawn`으로 감쌈 — 이 콜백이 도는 스레드가 플랫폼마다 달라서(Linux: zbus 워커, macOS: 이미 tokio task, **Windows: 메인 스레드 자체, 그것도 tao의 `DispatchMessage` 도중 플러그인의 숨은 창 WndProc 안에서 재진입적으로**) 세 플랫폼 다 이벤트 루프의 깨끗한 지점에서 처리되도록 통일 — Windows의 재진입 안전성을 Plan 에이전트도 완전히 확신 못 했던 지점이라 값싼 보험.
+- `capabilities/default.json`의 `"windows"`를 `["main"]` → `["win-*"]`로. Rust 쪽 창 생성 자체에는 새 권한이 전혀 필요 없음(`WebviewWindowBuilder::build()` 소스 확인 — ACL은 프론트→IPC 경계만 검사, 백엔드 자체 창 생성은 무관).
+
+**`backend/src/config.rs`/`backend/src/state.rs`**: `Mutex<()>` 하나만으로는 부족하다는 것도 Plan 에이전트가 짚어줌 — (1) 쓰기뿐 아니라 읽기도 락 안에서 하지 않으면, 다른 프로세스/스레드의 쓰기 도중 읽어서 "깨진 파일"로 오판 → `reload_config()`의 자기 치유가 **멀쩡한 config를 기본값으로 덮어써버리는** 부작용이 있음. (2) 프로세스 내 `Mutex`는 axum dev-server(별도 프로세스)에는 애초에 아무 효과가 없음 — 그래서 새 `backend/src/fsutil.rs`의 `atomic_write()`(임시 파일에 쓰고 `rename`, 같은 파일시스템에서 원자적)를 같이 적용: `Mutex`는 프로세스 내 read-modify-write 순서를, `atomic_write`는 프로세스 경계를 넘어선 파일 내용 원자성을 각각 담당. (3) `.lock().unwrap()` 대신 `.unwrap_or_else(|e| e.into_inner())`로 poisoning 처리 — 한 창의 IPC 스레드가 패닉해도 다른 모든 창의 config 접근이 영구히 막히지 않도록.
+
+**프론트엔드**: `getInitialPath?()` 삭제(위 URL 방식으로 대체), `onOpenPath?()` → `onFileDrop?(cb: (paths: string[]) => void)`로 개명(더 이상 `open-path` 이벤트를 안 받으므로 순수 drag&drop 전용이 됨) + `openWindow?(path)` 추가. `main.ts`: `?file=` 읽은 직후 `history.replaceState(null, '', location.pathname)` 추가(Plan 에이전트가 잡아낸 버그 — 없으면 `tauri dev`의 Vite 전체 리로드나 Cmd+R/devtools 리로드마다 처음 열었던 파일이 지금 보고 있는 문서 위에 다시 열려버림), drag&drop으로 여러 파일이 오면 첫 파일은 `openPath()`로 그 창 교체, 나머지는 `backend.openWindow?.(path)`로 새 창(macOS 다중 선택 규칙과 동일하게).
+
+**검증**: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) + 백엔드(`cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`, 백엔드 13개 + `app` crate 4개) 전부 통과. macOS 전용 부분(`Opened`/`Reopen`/`ExitRequested`, pristine-윈도우 재사용, 다이얼로그 `set_parent`)은 이 세션이 Linux라 실기 검증 불가 — 기존 `RunEvent::Opened`와 같은 처지(문서에 미검증으로 남겨둠). 나머지(멀티 창 자체, drag&drop 다중 파일, watcher 재키잉, `?file=` 재로드 안전성)는 실제 `npm run tauri dev`로 검증 예정.
+
+### 실기 검증(Linux, `npm run tauri dev`) — 완료, 발견 사항 1건
+
+`npm run tauri dev`를 백그라운드로 띄우고 `busctl --user list`(D-Bus에 `dev.lightmark.viewer`/`dev.lightmark.viewer.SingleInstance` 등록 확인)와 GTK Application의 D-Bus 창 트리(`busctl --user tree dev.lightmark.viewer` → `/dev/lightmark/viewer/window/N`, 창 개수를 셀 수 있음)로 확인:
+
+- **기본 실행(파일 없이) → 창 1개**: 확인됨. `open_window(app, None)` 1회 호출, D-Bus 트리에 `window/1` 하나만 등록.
+- **두 번째 실행(파일 인자) → single-instance 라우팅 자체는 정확히 동작**: 같은 바이너리를 파일 인자와 함께 다시 실행하면 두 번째 프로세스는 즉시 종료하고, 첫 프로세스가 `tauri_plugin_single_instance` 콜백을 받아 `open_window`를 호출하는 것까지 확인(크래시 없음, `async_runtime::spawn` 경유 정상 동작).
+- **발견된 실제 동작(버그라기보다 설계 범위의 문제)**: 위 두 번째 실행에서 **새 창이 열리지 않고, 아직 아무 파일도 안 실린 첫 창(`PristineWindow`)이 재사용됨** — `open_window`에 임시로 `eprintln!` 트레이스를 넣어 직접 확인(`creating new window win-0 (file=None)` → 두 번째 실행 시 `reusing pristine window win-0`, D-Bus 트리도 재실행 전후로 `window/1` 그대로 1개). 트레이스는 확인 후 원복, `git diff`로 반영 안 됐음을 확인.
+  - `PristineWindow` 재사용은 원래 **macOS 콜드스타트 레이스**(`setup()`이 `RunEvent::Opened`보다 먼저 실행돼서 생기는, 같은 실행 안에서의 찰나의 경합)만 겨냥해 설계된 것인데, 실제 구현은 플랫폼이나 "그 경합 순간"으로 범위가 좁혀져 있지 않고 **"아직 빈 채로 남아있는 창이 있으면 언제든(같은 실행이든 한참 뒤 별도 실행이든) 재사용"**하는 일반 규칙임 — `watch_file`이 그 창 라벨로 처음 불릴 때(=실제로 뭔가 열릴 때)까지 플래그가 안 지워지기 때문.
+  - 실사용 시나리오: 사용자가 LightMark를 파일 없이 띄워두고 잠시 그대로 두었다가(창은 비어 있음), 나스틸러스에서 다른 문서를 더블클릭하면 — 결정 #2("OS 트리거는 새 창")를 문자 그대로 적용하면 "빈 창은 그대로 두고 문서가 든 새 창이 하나 더 뜬다"가 기대값일 수 있는데, 지금 구현은 "그 빈 창에 문서를 그냥 실어버림"(창 개수는 늘지 않고 1개 유지)으로 동작함.
+  - 이게 실제로 나쁜 동작인지는 관점에 따라 갈림 — 빈 창을 그대로 두고 쓸모없는 창을 하나 더 띄우는 것보다, 어차피 비어있던 창을 재활용하는 게 오히려 자연스러운 UX일 수 있음. 다만 계획서/결정 #2의 문구("OS 트리거 → 새 창")를 엄격히 따지면 벗어나는 동작임.
+- **drag&drop 다중 파일, 같은 파일을 두 창에서 열고 하나 닫기, `?file=` 리로드 안전성**: 코드 리뷰로는 정상(watcher는 창 라벨로 재키잉되고 `Destroyed`에서 정리됨, `history.replaceState`가 `?file=` 재실행을 막음)이지만, 실제 마우스 drag&drop이나 창 닫기 같은 GUI 조작은 이 세션의 Wayland 네이티브 창을 `xdotool`/`wmctrl`로 제어할 수 없어서(X11 전용 도구라 Wayland 네이티브 창을 못 찾음) 자동으로 재현하지 못함 — 방침대로 시각적 확인은 사용자 몫으로 남김.
+- 검증 후 `cargo fmt --check`/`cargo build -p app`/`cargo test --workspace`(13+4개) 재확인, 임시 트레이스 원복 상태로 전부 통과.
+
+**후속 조치(자율 루프 중 결정, 사용자 응답 대기 없이 진행): `PristineWindow` 재사용을 macOS 전용으로 스코프 좁힘.** 이건 새로운 결정을 내린 게 아니라, 이미 사용자가 확정한 결정 #2("OS 트리거는 새 창")를 코드가 어기고 있던 걸 그 결정에 맞게 고친 것 — `open_window`의 재사용 분기를 `if cfg!(target_os = "macos") { ... }`로 감쌈(`PristineWindow` 구조체/기록/정리 로직 자체는 그대로 — Linux/Windows에서는 그냥 소비되지 않는 죽은 기록이 될 뿐, 무해함). 다시 `npm run tauri dev`로 재현: 기본 실행(창 1개, `window/1`) → 두 번째 실행(파일 인자) → `busctl --user tree`에 `window/1`과 `window/2`가 **둘 다** 존재하는 것으로 수정 확인(이전엔 재실행 후에도 `window/1` 하나뿐이었음). `cargo fmt`/`cargo build -p app`/`cargo clippy --workspace --all-features`/`cargo test --workspace`(13+4개) 전부 통과. macOS 쪽 동작(콜드스타트 레이스 회피)은 이 변경으로 전혀 안 바뀜 — 여전히 Linux 세션이라 실기 검증 불가, 다음에 macOS로 돌아갔을 때 확인.
 
 ## 인쇄 시 컨텐츠 잘림 방지 (신규)
 
@@ -486,14 +530,66 @@ M6에서 `tauri-plugin-single-instance`로 "두 번째 실행/다른 .md 파일 
 
 검증 후 앱을 `gio launch`로 다시 띄워둔 상태로 남겨뒀으나, **사용자가 재확인 후 "여전히 안 보여"로 리포트** — 자동화된 진단 도구(xprop/wmctrl)로는 네이티브 Wayland 창을 못 봐서 더 이상 추론만으로는 원인을 좁히기 어려운 상태(GNOME Shell의 Looking Glass Eval은 기본 비활성화라 개발자 도구를 켜야 직접 조회 가능한데, 이건 사용자 계정 설정을 바꾸는 일이라 먼저 물어봄). **사용자가 "일단 미뤄둘게. 패키징 이후 다시 보자"로 보류 결정** — M8 패키징(AppImage/deb/rpm)이 진짜 `.desktop` 파일을 자동 생성하고 나면, 지금 겪는 "dev 모드 전용" 문제 자체가 사라질 가능성이 높아서 그때 다시 보는 게 합리적. 지금까지 한 변경(`enableGTKAppId`, `bundle.icon` 순서, 로컬 `.desktop` 파일)은 전부 무해하니 그대로 둠 — 로컬 `.desktop` 파일은 원래도 저장소에 커밋 안 되는 사용자 머신 전용 파일.
 
+## 버그 수정(사용자 리포트): 새 창이 뜰 때 TOC가 잠깐 보였다가 사라짐
+
+"지금 창이 새로 뜰 때 잠깐 toc 화면이 보였다가 사라져. 기본값을 안 보이는걸로 해서, 처음 깜빡임을 없애줘."
+
+**원인**: `frontend/index.html`의 정적 마크업 `<div class="lm-content">`에는 애초에 숨김 클래스가 없어서, `layout.css`의 기본(클래스 없는) 상태가 그대로 페인트됨 — `.lm-content`는 기본이 2단 그리드(`grid-template-columns: var(--lm-toc-width) 1fr`)이고 `lm-toc { display: block; }`도 태그 셀렉터라 커스텀 엘리먼트가 아직 upgrade되기 전부터 바로 적용돼서, 첫 페인트에 TOC가 보임. `main.ts`는 `<script type="module">`이라 파싱 이후에 실행되고, 게다가 `const backend = await createBackend();`라는 top-level await 때문에(Tauri 모드에서는 `./tauri` 동적 import까지 포함) `updateTocDisplay()`(TOC를 실제로 숨기는 유일한 코드)가 실행되기까지 진짜 지연이 있음 — 그 사이의 간극이 눈에 보이는 깜빡임이 됨. `updateTocDisplay()` 자체의 로직(`hasDocument`가 `false`인 동안은 `tocVisible` 값과 무관하게 항상 숨김)은 원래도 맞았음 — DOM에 반영되는 시점만 늦었던 것.
+
+**수정**: `frontend/index.html`의 `<div class="lm-content">`를 `<div class="lm-content lm-toc-hidden">`로 정적 마크업 단계에서부터 미리 숨겨진 상태로 시작하도록 변경(1줄). `updateTocDisplay()`는 상태가 바뀔 때마다(초기 로드, config 로드 완료, 파일 열림, 토글 클릭) 이 클래스를 무조건 다시 계산해서 갱신하므로, 마크업에 미리 넣어둔 클래스와 충돌 없음 — TOC 토글 기능 자체는 전혀 안 바뀜.
+
+검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과.
+
+## 문서 전체 업데이트 (신규)
+
+"문서 전체 업데이트" 요청으로 `docs/PRD.md`/`ARCHITECTURE.md`/`CONFIG_SPEC.md`/`IPC_SPEC.md`/`UI_SPEC.md`/`TASKS.md`/`PLAN.md`를 실제 코드와 다시 전수 대조(탐색 에이전트로 1차 감사 후 직접 확인). CONFIG_SPEC의 필드 목록(12개 전부)/IPC_SPEC의 커맨드 8개/컴포넌트 목록/멀티 윈도우 서술/TASKS 체크 상태/print·zoom·TOC-깜빡임 관련 서술은 전부 코드와 일치 확인, 별도 수정 없음. 실제로 어긋난 것들 수정:
+
+- **`docs/PLAN.md`의 "BackendApi (계약 고정)" 스니펫**: "현재 기준"이라고 써놨는데 정작 멀티 윈도우 지원에서 이미 지워진 `getInitialPath?()`/`onOpenPath?()`를 그대로 보여주고 있었음 — `onFileDrop?()`/`openWindow?()`로 교체.
+- **`frontend/src/platform/tauri.ts`의 헤더 주석**: "7 IPC commands"라고 돼 있었는데 멀티 윈도우 지원에서 `open_new_window`가 추가돼 실제로는 8개 — 숫자만 수정.
+- **`frontend/src/types/config.ts`의 `viewerMaxWidth` 주석**: "lm-statusbar의 width input을 통해 사용자가 입력"이라고 돼 있었는데, 이 입력창은 이미 M7 중 읽기 전용 표시로 되돌아간 지 오래(HANDOFF.md 상단 M7 항목 참고) — config.json 편집 전용이라는 실제 동작으로 주석 수정.
+- **`docs/UI_SPEC.md`의 StatusBar 서술**: "Filename, 폭 제한 표시, Theme, Zoom"으로 `Theme`이 남아있었는데, `lm-statusbar.ts`에는 filename/폭 제한/zoom(+dev 전용 perf)만 있고 테마 표시는 애초에 구현된 적이 없음(코드의 "Theme field is filled in by the theme engine (M3)"라는 주석만 남아있던 계획 단계 흔적) — `Theme` 항목 삭제, 그 주석도 같이 정리.
+- **`docs/PLAN.md`의 M1 디렉토리 구조 스니펫**: 멀티 윈도우 지원에서 추가된 `backend/src/fsutil.rs`가 빠져있어서 한 줄 추가.
+
+검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) + `cargo fmt --check` 전부 통과.
+
+**발견했던 것 — TOC Resizable 미구현, 사용자 확인 후 구현 완료**: `CLAUDE.md`(프로젝트 최상위 지침)의 UI Rules가 TOC 요구사항으로 "toggleable, **resizable**, hierarchical, active section highlighting"을 명시하고 `docs/UI_SPEC.md`도 "Resizable"이라고 적어뒀는데, 실제 코드(`lm-toc.ts`, `layout.css`)엔 리사이즈 핸들/드래그 로직이 전혀 없고 TOC 폭은 `--lm-toc-width: 280px` 고정값뿐이었음 — TOC Toggle(M7)은 구현됐지만 Resizable은 애초에 구현된 적이 없었음. 문서만 코드에 맞춰 조용히 낮추면(예: "Resizable" 삭제) `CLAUDE.md`가 못박은 요구사항을 임의로 낮추는 셈이라 사용자에게 확인 → **"지금 구현"으로 결정**, 아래 "TOC Resizable 구현" 참고.
+
+### TOC Resizable 구현 (신규)
+
+Zoom/TOC Toggle과 같은 전례(세션 전용, config.json에 안 씀)를 그대로 따름 — `CLAUDE.md`의 "No graphical settings editor"는 config.json 자체의 편집 경로 얘기고, 세션 중 UI로 조절 가능한 값(zoom, TOC 표시 여부)은 이미 그 규칙과 별개로 취급돼왔음. TOC 폭도 같은 성격이라 별도 config 필드 신설 없이 세션 전용으로 구현 — 앱을 다시 시작하면 `tokens.css`의 기본값(280px)으로 돌아감.
+
+- **`frontend/src/components/lm-toc.ts`**: light DOM 구조를 `this` 직속 텍스트/리스트 하나에서 `.lm-toc-list`(TOC 항목 `<ul>`을 담는 컨테이너) + `.lm-toc-resize-handle`(드래그 핸들) 두 자식으로 분리 — `setToc()`가 매번 `replaceChildren()`으로 통째로 지우던 걸 `.lm-toc-list`만 지우도록 바꿔서, 리사이즈 핸들이 파일을 열 때마다(=`setToc()` 재호출마다) 같이 지워지지 않게 함. 핸들은 `pointerdown` → `setPointerCapture()` → `pointermove`(드래그 시작 폭 + 이동량, `MIN_WIDTH`(160)~`MAX_WIDTH`(560)로 클램프해서 `document.documentElement.style.setProperty('--lm-toc-width', ...)`) → `pointerup`/`pointercancel`(해제)의 표준 포인터 캡처 패턴 — `document` 레벨 리스너를 따로 안 둬도 핸들 밖으로 나간 드래그까지 그대로 추적되고, 컴포넌트가 사라져도 별도 정리가 필요 없음.
+- **`frontend/src/styles/layout.css`**: `lm-toc`에 `position: relative`(핸들의 위치 기준점) 추가. `.lm-toc-resize-handle`은 `lm-toc`의 오른쪽 경계에 걸치는 6px짜리 투명한 스트립(`cursor: col-resize`, `touch-action: none`으로 터치 드래그가 페이지 스크롤로 오인되는 것 방지), hover/active 시에만 `--lm-color-accent`로 옅게 틴트. 기존 `lm-toc > ul` 셀렉터(최상위 리스트 전용 패딩)는 `<ul>`이 이제 `.lm-toc-list` 안에 한 단계 더 들어가 있으므로 `.lm-toc-list > ul`로 수정.
+
+검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과. `npm run tauri dev`로 앱이 크래시 없이 뜨는 것까지 확인(`busctl` 창 1개)했으나, 실제 마우스 드래그로 폭이 바뀌는지는 이 세션의 Wayland 환경에서 마우스 조작 자동화가 안 돼서 직접 못 눌러봄 — 사용자가 직접 드래그해서 확인 필요.
+
+### 버그 수정(사용자 리포트): TOC에 세로 스크롤이 있으면 resize가 안 되고, 하면 안 된다고 이미 못박은 가로 스크롤바가 생김
+
+"새로 스크롤이 있는 상태에서는 resize가 안 되고, 절대 하지 말라고 한 가로 스크롤바가 생겼어."
+
+**원인 진단(헤드리스 Chrome CDP로 직접 재현·측정, 추측 아님)**: `npm run dev`(Vite, Web 모드) + 헤드리스 Chrome을 CDP로 띄워 `lm-toc.setToc()`에 헤딩 200개를 주입해서 실제로 스크롤이 생기는 상태를 만들고 `getBoundingClientRect`/`scrollWidth`/`elementFromPoint` 등으로 직접 측정:
+
+- **가로 스크롤 원인**: 처음 구현에서 핸들을 `.lm-toc-resize-handle { position: absolute; right: -3px; ... }`로 `lm-toc` 자기 경계 밖으로 3px 튀어나오게 배치했었음 — `lm-toc`가 `overflow-y: auto`인 상태에서 자식이 박스 밖으로 넘치면, `overflow-wrap`/`word-break` 수정 때 이미 한 번 겪었던 것과 같은 "overflow-x가 암묵적으로 auto가 되는" 계산이 다시 발동해서 진짜 가로 스크롤바가 생김 — 실측(`toc.scrollWidth > toc.clientWidth`)으로 확인.
+- **세로 스크롤 있을 때 resize 안 되는 원인**: 같은 배치 때문에 핸들의 히트 영역이 실제 세로 스크롤바가 그려지는 자리와 겹쳐서, 그 자리를 클릭하면 브라우저가 스크롤바 쪽으로 입력을 먼저 가로챔 — 핸들까지 포인터 이벤트가 아예 도달을 못 함.
+- **수정**: `.lm-toc-list`(스크롤되는 리스트, `flex: 1 1 auto`)와 `.lm-toc-resize-handle`(고정폭 6px)을 `lm-toc { display: flex }`의 서로 겹칠 수 없는 형제 자식으로 재배치 — 절대 위치 대신 flex 레이아웃이라 둘이 물리적으로 같은 픽셀을 차지할 수 없음. `.lm-toc-list`엔 `overflow-x: hidden`도 추가(벨트+브레이스).
+- **2차 발견(같은 헤드리스 테스트로 잡음): flex/grid item의 `min-height: auto` 함정.** 위 구조로 바꾸고 다시 측정해보니, 이번엔 `lm-toc` 자체의 높이가 `.lm-content` 그리드 셀 고정 높이(439px)가 아니라 컨텐츠 전체 높이(4572px)로 늘어나 있었음 — TOC 자체가 스크롤되는 대신 화면 전체를 그만큼 밀어버리는 상태. 원인: `overflow-y: auto`를 `lm-toc`(그리드 아이템) 자신에게 직접 걸어두면 그 자동 최소 크기가 0으로 계산되는데, 스크롤 담당을 자식(`.lm-toc-list`)으로 옮기면서 `lm-toc` 자신은 그 계산 혜택을 못 받게 됨 — 그리드 아이템의 기본 `min-height: auto`가 살아나 컨텐츠 높이만큼 그리드 셀을 밀어버림. `lm-toc`에 `min-height: 0` 명시로 수정.
+- **재검증(같은 헤드리스 테스트)**: 수정 후 `lm-toc` 높이는 다시 439px로 고정, `.lm-toc-list.scrollHeight(4572) > clientHeight(439)`로 실제 내부 스크롤 확인, `toc.scrollWidth === toc.clientWidth`로 가로 스크롤 없음 확인, 핸들 중심 좌표에서 `document.elementFromPoint()`가 정확히 `lm-toc-resize-handle`을 반환하는 것까지 확인(세로 스크롤이 있는 상태에서도 핸들이 히트됨) — 두 리포트 모두 실측으로 해결 확인.
+
+검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과 + 위 헤드리스 Chrome 실측. 실제 마우스 드래그 자체는 여전히 사용자 몫(이 세션 환경에서 자동화 불가).
+
+**최종 확인(사용자): "좋아. 모두 해결됐네."** — TOC Resizable 자체와 위 두 버그 수정(가로 스크롤바 생김, 세로 스크롤 있을 때 resize 안 됨) 모두 실제 앱에서 확인 완료.
+
 ## 다음에 할 일 (사용자 지정 대기)
 
-**진짜 남은 것 (사용자가 어느 걸 먼저 할지 아직 안 정함):**
+**진짜 남은 것:**
+- **`PristineWindow` macOS 전용 스코프에 대한 사용자 확인(선택)**: 자율 루프 중 결정 #2("OS 트리거는 새 창")에 맞춰 macOS 전용으로 이미 고쳐서 재검증까지 마침(위 "후속 조치" 참고) — 되돌릴 필요는 없다고 보지만, 사용자가 원래(플랫폼 무관 일반 재사용)를 선호하면 알려주면 됨. 블로킹 아님.
+- **멀티 윈도우/인스턴스 지원의 GUI 조작 부분 실기 확인**: drag&drop 다중 파일, 창 닫기 시 watcher 정리, `?file=` 리로드 안전성은 코드 리뷰로는 정상이지만 이 세션의 Wayland 환경에서는 마우스 조작 자동화가 안 돼서 직접 못 눌러봄 - 사용자가 직접 확인 필요. macOS 전용 부분(`Opened`/`Reopen`/`ExitRequested`, `PristineWindow` 재사용, 다이얼로그 `set_parent`)은 Linux 세션이라 애초에 검증 불가 - macOS로 돌아갔을 때 마무리.
 - **M8(패키징 및 배포)**: `patchelf`/`libfuse2t64` 설치 후 `npm run tauri build`로 AppImage 등 패키징(다시 Ubuntu라 원래 계획 유효). 앱 아이콘은 완료, 나머지(실제 번들링, 릴리스 빌드 시작 시간/메모리 실측 <1s/<30MB)는 미착수.
-- **멀티 윈도우/인스턴스 지원**: 조사만 끝남, 설계/구현 미착수(위 "멀티 윈도우/인스턴스 지원" 섹션 참고). 재개 시 "다시 시작할 때 먼저 사용자에게 물어야 할 것" 목록부터.
-- **dock 아이콘 미표시**: 보류 중 — M8 패키징이 끝난 뒤 실제 설치된 앱으로 재검토(바로 위 "앱 아이콘" 섹션 참고).
+- **dock 아이콘 미표시**: 보류 중 — M8 패키징이 끝난 뒤 실제 설치된 앱으로 재검토(위 "앱 아이콘" 섹션 참고).
 
 **종결된 것 (참고용, 더 이상 진행 안 함):**
 - M7(TOC Toggle/Zoom/About) — 전부 완료 및 사용자 확인.
 - 인쇄 시 컨텐츠 잘림 버그 — WebKitGTK가 `break-inside`를 지원 안 하는 게 근본 원인, "알려진 한계로 받아들이기"로 사용자가 확정.
-- macOS `RunEvent::Opened` — 사용자가 실기 확인 완료.
+- macOS `RunEvent::Opened`(M6 구현분) — 사용자가 실기 확인 완료(멀티 윈도우 지원으로 관련 코드 경로가 다시 바뀌어서, 이번에 새로 짠 `Opened`/`Reopen` 처리는 별도로 재검증 필요 - 위 참고).
+- 멀티 윈도우/인스턴스 지원의 single-instance 라우팅/창 생성 자체(빈 창 1개 기본 실행, 재실행 시 크래시 없이 `open_window` 호출, 재실행이 새 창을 여는 것) — `busctl` D-Bus 트리로 실기 확인 완료(위 "실기 검증"/"후속 조치" 참고).
+- TOC Resizable(구현 + 가로 스크롤바/세로 스크롤 시 resize 안 되던 버그 2건) — 사용자가 실제 앱에서 확인 완료("좋아. 모두 해결됐네.").

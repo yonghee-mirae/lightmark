@@ -283,19 +283,31 @@ toc.addEventListener('lm-toc-select', (event) => {
 
 // Dev/Tauri mode: there's no native "Open" dialog outside Tauri, so a real filesystem path opens
 // via `?file=<path>` instead of BackendApi.openFile() (docs/IPC_SPEC.md: open_file has no Dev
-// Server route). Gated on capabilities.watch since that's exactly the Web-vs-Dev/Tauri split for
-// "can this backend read an arbitrary path at all".
+// Server route). In Tauri, every window (including the very first one) is created with its file
+// already in its own URL this same way, instead of a separate pull-based IPC call (docs/PLAN.md
+// "멀티 윈도우/인스턴스 지원") - so this one block now covers both modes. Gated on
+// capabilities.watch since that's exactly the Web-vs-Dev/Tauri split for "can this backend read
+// an arbitrary path at all".
 const filePath = new URLSearchParams(location.search).get('file');
 if (filePath && backend.capabilities.watch) {
+  // Strip it right away - left in place, it survives in location.search and re-fires on any
+  // reload of this window (a Vite full-reload in `tauri dev`, Cmd+R, devtools reload), re-opening
+  // this original file over whatever's since been opened here and stacking a second watcher on
+  // top of the current one.
+  history.replaceState(null, '', location.pathname);
   openPath(filePath);
 }
 
-// Tauri: no `?file=` query param to read, so the initial CLI/file-association path (if any) is
-// pulled once via getInitialPath() instead, and any later open (double-clicking another .md,
-// which src-tauri's single-instance plugin routes into this same window) pushes via onOpenPath().
-void backend.getInitialPath?.().then((path) => {
-  if (path) {
-    openPath(path);
+// Tauri only: native OS drag&drop onto this window (Web's browser-native drop is handled by
+// lm-viewer.ts itself via the 'lm-file-drop' listener above). The first dropped file replaces
+// this window's content in place, same as the toolbar Open button; any additional files each get
+// their own new window (docs/PLAN.md "멀티 윈도우/인스턴스 지원").
+backend.onFileDrop?.((paths) => {
+  const [first, ...rest] = paths;
+  if (first) {
+    openPath(first);
+  }
+  for (const path of rest) {
+    void backend.openWindow?.(path);
   }
 });
-backend.onOpenPath?.((path) => openPath(path));

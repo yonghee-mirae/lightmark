@@ -36,4 +36,4 @@ Rendered Markdown Only
 기본은 컬럼 폭 제한 없이 뷰어 폭 전체를 채운다 - word-wrap은 실제 창 가장자리에서만 일어나고, 가독성을 위한 고정 컬럼은 두지 않는다(M7). 좁은 컬럼을 원하면 `config.json`의 `viewerMaxWidth`를 직접 편집한다(그래픽 설정 UI 없음, `CLAUDE.md` Config Rules) - 현재 값은 StatusBar에 읽기 전용으로 표시.
 
 ## StatusBar
-Filename, 폭 제한 표시(파일명 바로 오른쪽, M7 - `config.json`의 `viewerMaxWidth`를 읽기 전용으로 표시, 편집은 config.json에서만. `Width: Full` 또는 `Width: {값}px`), Theme, Zoom
+Filename, 폭 제한 표시(파일명 바로 오른쪽, M7 - `config.json`의 `viewerMaxWidth`를 읽기 전용으로 표시, 편집은 config.json에서만. `Width: Full` 또는 `Width: {값}px`), Zoom

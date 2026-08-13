@@ -1,4 +1,3 @@
-// Theme field is filled in by the theme engine (M3); filename work now.
 // The perf indicator is dev-only (docs/PLAN.md M2 verification: parse+render < 300ms for 10k lines).
 
 export class LmStatusbar extends HTMLElement {

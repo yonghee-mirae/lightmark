@@ -27,3 +27,7 @@ tauri-plugin-dialog = "2.7.2"
 tauri-plugin-opener = "2.5.4"
 tauri-plugin-single-instance = "2.4.3"
 backend = { version = "0.1.0", path = "../backend" }
+# form_urlencoded, for percent-encoding a file path into a new window's `?file=` URL (docs/PLAN.md
+# multi-window support) - already resolved via tauri's own dependency tree (Cargo.lock has 2.5.8),
+# this just makes it a direct dependency since `tauri::Url` is re-exported but `form_urlencoded` isn't.
+url = "2"
