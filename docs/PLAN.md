@@ -83,13 +83,17 @@ lightmark/
 
 ```ts
 export interface BackendApi {
+  readonly capabilities: { watch: boolean; configFile: boolean };
   openFile(): Promise<OpenedFile | null>;
   readFile(path: string): Promise<string>;
   watchFile(path: string, onChange: () => void): Promise<Unwatch>;
   readConfig(): Promise<Config>;
   reloadConfig(): Promise<Config>;
   openConfigFolder(): Promise<void>;
-  readonly capabilities: { watch: boolean; configFile: boolean };
+  // Optional: only TauriBackend implements these (M6) - Web/Dev have no "open on startup"
+  // concept (Dev gets the same job done via the `?file=` query param in main.ts instead).
+  getInitialPath?(): Promise<string | null>;
+  onOpenPath?(cb: (path: string) => void): void;
 }
 export interface OpenedFile { path: string; name: string; content: string; }
 export type Unwatch = () => void;
@@ -371,9 +375,16 @@ M1부터 `disabled`로만 자리를 잡아두고 M3~M6에서 계속 미뤄온 �
 
 M6(Tauri 통합)에서 분리. 통합이 끝난 뒤 마지막에 하는 게 맞는 작업들이라 별도 마일스톤으로 둔다.
 
+- **앱 아이콘 (완료)**: 사용자가 `npm run tauri icon ./app-icon.png`(1024x1024 소스, 저장소 루트 `app-icon.png`)로 `src-tauri/icons/` 아래 전체 세트(32x32/128x128/128x128@2x/icon.icns/icon.ico + 스토어/모바일용 나머지)를 재생성 — `tauri.conf.json`의 `bundle.icon`이 `tauri init --ci` 스캐폴딩 때부터 이미 이 정확한 경로들을 참조하고 있어서, 파일만 같은 자리에 다시 생성하면 되고 설정 변경은 필요 없었음.
+  - **개선: `bundle.icon` 배열에 `icons/icon.png`(512x512) 추가(맨 앞).** Tauri 소스(`tauri-codegen`) 확인 결과, Linux 기본 창 아이콘은 배열에서 `.png`로 끝나는 첫 항목을 그대로 쓰는데 원래 `icons/32x32.png`가 먼저 있어서 창 자체 아이콘이 아주 작은 해상도로 박혀 있었음.
+  - **버그 수정(사용자 리포트): `npm run tauri dev`로 확인했는데 dock에 아이콘이 적용 안 됨.** Tauri 소스(`tauri-2.11.5/src/app.rs`) 확인 결과, GTK application ID(Wayland에서 데스크톱 셸이 `.desktop` 파일과 창을 매칭하는 값)는 `app.enableGTKAppId`(정확히 이 대소문자)가 `true`일 때만 `identifier` 값으로 설정되고 기본값은 `false` — 즉 app_id 자체가 아예 없었던 게 근본 원인(사용자 세션이 Wayland임을 확인). `tauri.conf.json`에 `"enableGTKAppId": true` 추가로 수정, `busctl --user list`로 앱이 `dev.lightmark.viewer` D-Bus 이름을 실제로 세션 버스에 등록하는 것을 확인해 적용 여부 검증. 사용자 승인 하에 로컬 전용(커밋 안 됨) `~/.local/share/applications/dev.lightmark.viewer.desktop`도 추가해 dev 모드 창도 dock이 바로 인식하도록 함 — 실제 배포 시에는 M8 패키징이 `.desktop` 파일을 자동 생성하므로 불필요.
+  - **후속 리포트(사용자, 2건): (1) `npm run tauri dev`로는 여전히 dock 아이콘 안 보임, (2) Apps 목록엔 아이콘이 뜨지만 클릭해도 앱이 실행 안 됨.** 원인 둘 다 확인/수정:
+    - **(2) 먼저 확인**: `desktop-file-validate`로 확인해보니 원래 `Exec=bash -c 'npm run tauri dev'`가 Desktop Entry 스펙상 잘못된 따옴표 처리("reserved character ''' outside of a quote")라 GLib 런처가 아예 파싱 실패 — 클릭해도 조용히 아무 일도 안 일어난 이유. `Exec=npm run tauri dev`(bash 래핑 제거)로 단순화하고 `Path=/home/tramamte/src/rust/lightmark`(작업 디렉터리)를 추가해 `package.json`/`tauri.conf.json`을 제대로 찾도록 함. `gio launch`(더블클릭 시뮬레이션)로 실제 dev 파이프라인 전체(vite+tauri dev+앱, D-Bus 이름 등록까지)가 정상 기동하는 것 확인.
+    - **(1) 근본 원인**: GNOME Shell의 Wayland 앱 아이콘 매칭은 실행 중인 창의 app_id를 `.desktop` **파일명**(확장자 제외)과 직접 비교하는 걸 우선시함(`StartupWMClass`는 X11 시절 창 위주의 보조 수단) — 파일명이 `lightmark-dev.desktop`이라 app_id(`dev.lightmark.viewer`)와 안 맞았음. 파일명을 정확히 `dev.lightmark.viewer.desktop`으로 바꿔서 해결(내용의 `StartupWMClass`는 보조 수단으로 그대로 유지).
+    - 검증: `desktop-file-validate` 통과, `gio launch`로 실제 기동 확인, `busctl --user list`로 `dev.lightmark.viewer` D-Bus 이름 등록 재확인. **사용자가 재확인 후에도 dock 아이콘은 여전히 안 보임** — 자동화 도구로는 네이티브 Wayland 창 상태를 더 조회할 수 없어(GNOME Shell Eval은 기본 비활성화) 사용자에게 개발자 도구 활성화 여부를 물었으나, **사용자가 "일단 미뤄둘게. 패키징 이후 다시 보자"로 보류 결정** — M8 패키징 이후 실제 설치된 앱으로 재검토. 지금까지의 변경(`enableGTKAppId`, `bundle.icon` 순서, 로컬 `.desktop` 파일)은 무해하므로 그대로 유지.
+  - 검증: `cargo check -p app`/`cargo fmt --check`/`cargo clippy --workspace --all-features`/`cargo test --workspace`(13개) 전부 통과.
 - AppImage 등 `npm run tauri build` 패키징 — `patchelf`/`libfuse2t64`(Ubuntu 24.04는 `libfuse2`가 아니라 `libfuse2t64`, M6에서 확인해둔 사항) 설치 필요. `tauri.conf.json`의 `bundle.targets` 기본값이 "all"이라 그대로 두면 AppImage/deb/rpm을 다 시도하니, 필요하면 `--bundles`로 범위를 좁힌다.
 - 시작 시간 < 1s, 일반 문서 메모리 < 30MB 실측 — 디버그 빌드가 아니라 실제 릴리스 바이너리(`npm run tauri build -- --no-bundle` 또는 번들링된 최종 결과물)로 측정해야 의미 있는 수치가 나온다.
-- macOS `RunEvent::Opened`(M6에서 구현했지만 Linux 환경이라 미검증) 실기 확인 — macOS 배포 전 필수.
 - 코드 서명/배포 채널 등 실제 릴리스 절차(범위는 착수 시점에 확정).
 
 **검증**: `npm run tauri build` 성공(선택한 타깃 전부). 패키징된 결과물을 실제로 설치해서 열기/저장 반영/인쇄/Config 동작 전체 플로우 재확인. 시작 시간/메모리 실측치를 `CLAUDE.md`의 목표(<1s, <30MB)와 비교해 기록.

@@ -36,5 +36,6 @@
 - [x] About
 
 ## Milestone 8
+- [x] App Icon — `npm run tauri icon`으로 생성, `tauri.conf.json`의 `bundle.icon`이 이미 같은 경로를 참조
 - [ ] Packaging — AppImage 패키징은 별도 진행(fuse/patchelf 미설치)
 - [ ] Release

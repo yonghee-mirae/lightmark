@@ -17,10 +17,10 @@
   - **뷰어 폭 제한(`viewerMaxWidth`)**: `.lm-markdown`의 `max-width`를 완전히 제거(기본은 뷰어 폭 전체 사용, 좌/우 `margin: 1rem`)하고, config 필드 `viewerMaxWidth`(number, px, 기본값 `0`=제한 없음)를 config.json에서만 편집, `lm-statusbar`(파일명 오른쪽)는 `Width: Full`/`Width: {값}px`로 읽기 전용 표시만 하는 방식으로 정착(중간에 고정 860px → `min(860px, 90vw)` → boolean 토글 → 입력창을 거쳐옴). 값을 바꾸면 그 px로 제한되고 좌우 auto margin으로 가운데 정렬(큰 값을 넣어도 여백이 0으로 찌그러지지 않도록 `calc(100% - 2rem)` 캡 처리됨). **사용자가 실기로 확인함.**
   - **경고 상자 디자인 통일**: mermaid/KaTeX(inline+block)/image 렌더링 실패 시 뜨는 빨간 경고 상자가 서로 다른 padding을 쓰던 것을 mermaid 기준으로 통일. **사용자가 실기로 확인함.**
   - 아래 "M7 구현 상세"/"macOS 전환 세션 구현 상세" 참고.
-- **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리), 미착수. macOS 전환으로 계획이 Linux 전제(AppImage/`patchelf`/`libfuse2t64`)에서 벗어남 — macOS는 `.app`/`.dmg` 타깃이라 착수 시 범위를 다시 잡아야 함. 릴리스 빌드 성능 실측(<1s, <30MB)도 미착수.
+- **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리). 다시 Ubuntu로 돌아와서 원래 Linux 전제(AppImage/`patchelf`/`libfuse2t64`) 계획이 다시 유효함. **앱 아이콘은 완료**(사용자가 `npm run tauri icon`으로 생성한 아이콘 세트 적용, `bundle.icon` 순서 개선, `enableGTKAppId` 활성화 — 아래 "앱 아이콘" 참고, dock 아이콘 표시만 패키징 이후 재검토로 보류). AppImage 등 실제 패키징, 릴리스 빌드 성능 실측(<1s, <30MB)은 아직 미착수.
 - **macOS 전환 세션 (2026-08-12)**: 개발 환경을 Ubuntu에서 macOS로 이전. 빌드/테스트 자체는 시스템 패키지 설치 없이 전부 통과했지만, 그 과정에서 macOS 전용 버그 3건(watcher의 FSEvents 경로 불일치, Print 버튼의 Tauri ACL 권한 누락, 문서 끝 스크롤 시 트랙패드 러버밴드로 툴바/상태바가 밀림)을 발견/수정하고 사용자가 Print·러버밴드는 실기로 재확인함. 그 외 사용자 요청으로 config 자기 치유 범위 확장, 구현 안 된 채로 스키마에만 남아있던 config 필드 2개(`autoReload`, `breadcrumbVisible`) 삭제, 상태바 레이아웃 조정, Apply 버튼 no-op 최적화, viewer/TOC 가로 스크롤 방지(word-wrap)까지 진행. 아래 "macOS 전환 세션 구현 상세" 참고.
 
-다음 세션(Ubuntu)은 사용자의 새 지시를 기다리는 상태에서 시작 — M7은 이번 세션에서 전부 완료됨. 멀티 윈도우/인스턴스 지원(조사만 끝, 설계/구현 미착수), M8(macOS 기준으로 범위 재검토 필요했지만 다시 Linux면 원래 AppImage 계획이 유효할 수도 있음 — 재검토), `RunEvent::Opened` 실기 검증(단, 이건 macOS 전용이라 Ubuntu에서는 못 함) 중 어느 걸 먼저 할지가 다음 화두. 아래 "다음에 할 일" 참고.
+**현재(2026-08-13, Ubuntu 세션 진행 중)**: M7 전부 완료+확인, 인쇄 페이지 잘림 버그는 원인 확정 후 "알려진 한계로 받아들이기"로 종결, `RunEvent::Opened`도 사용자 확인 완료, 앱 아이콘도 적용 완료(dock 표시만 패키징 이후로 보류). 남은 건 **M8(패키징)**과 **멀티 윈도우/인스턴스 지원**(조사만 끝, 설계 미착수) 둘 중 어느 걸 먼저 할지 — 사용자 지정 대기. 아래 "다음에 할 일" 참고.
 
 ## M2 구현 상세
 
@@ -457,9 +457,43 @@ M6에서 `tauri-plugin-single-instance`로 "두 번째 실행/다른 .md 파일 
 - **결론 및 사용자 결정(받아들이고 넘어가기): 이 WebKitGTK 버전은 `break-inside`/`page-break-inside`(레거시 포함)를 사실상 존중하지 않는다** — 요소 종류나 CSS 값을 아무리 바꿔도 CSS만으로는 고칠 수 없는, 엔진 자체의 인쇄 페이지네이션 한계로 보임(비-Mac WebKit 포트의 인쇄 지원이 Blink/Gecko보다 약하다는 건 알려진 문제 범주). 진짜 고치려면 JS로 각 "보호 대상" 요소의 위치를 계산해서 페이지 경계에 걸릴 것 같으면 그 앞에 강제로 여백을 넣어 다음 페이지로 밀어내는 수동 페이지네이션(자체 구현 또는 Paged.js 같은 라이브러리)이 필요한데, 세 가지 선택지(직접 JS 구현/Paged.js 도입/한계로 받아들이기)를 제시한 결과 **"알려진 한계로 받아들이고 넘어가기"로 확정** — 추가 코드 변경 없음.
 - 기존 요소별 `break-inside`/`break-after` 규칙(1차 시도)은 그대로 코드에 남아있음 — 이 WebKitGTK 버전에서는 효과가 없는 것으로 확인됐지만, 다른 엔진(Chromium 등, 실제로 페이지 경계에 걸리는 경우)이나 향후 WebKitGTK 버전 업데이트에서는 여전히 유효할 수 있어 해로울 게 없어 제거하지 않음.
 
+## 앱 아이콘 (신규, M8)
+
+사용자가 `npm run tauri icon ./app-icon.png`(1024x1024 소스, 저장소 루트 `app-icon.png`)를 직접 실행해서 `src-tauri/icons/` 아래 전체 아이콘 세트(32x32/128x128/128x128@2x/icon.icns/icon.ico + Windows Store/Android/iOS용 나머지 크기들)를 재생성함 — 이미 커밋까지 완료된 상태에서 "앱에 아이콘 적용 먼저 하자"는 요청으로 확인 작업 진행.
+
+- **`tauri.conf.json`의 `bundle.icon`은 코드 변경이 필요 없었음** — `tauri init --ci` 스캐폴딩(M6) 때부터 이미 `icons/32x32.png`/`icons/128x128.png`/`icons/128x128@2x.png`/`icons/icon.icns`/`icons/icon.ico`를 정확히 그대로 참조하고 있어서, `tauri icon` 명령이 그 자리에 파일만 다시 생성하면 자동으로 적용됨(개별 창에는 별도 `icon` 필드가 없음 — Tauri v2 스키마에 `bundle.icon`만 존재, 확인함).
+- **검증**: `file` 명령으로 `icon.icns`(Mac OS X icon)/`icon.ico`(Windows icon resource)/`icon.png`(512x512 PNG)가 전부 유효한 포맷인지 확인. `cargo check -p app`/`cargo fmt --check`/`cargo clippy --workspace --all-features` 전부 통과 — config 자체의 유효성(Tauri가 빌드 시 `tauri.conf.json`을 파싱/검증)도 같이 확인됨.
+- **실제 창/번들 아이콘 표시 여부는 육안 확인 필요**: `npm run tauri dev`로 뜬 창의 타이틀바/작업표시줄 아이콘, 추후 `npm run tauri build`(M8의 다른 작업, 아직 미착수)로 만든 번들의 아이콘은 이 세션에서 시각적으로 확인 안 함(방침대로 사용자 몫).
+- 프론트엔드 브라우저 탭 파비콘은 이번 요청과 별개(Tauri 네이티치 아이콘 vs. 브라우저 파비콘) — `frontend/index.html`에 현재 파비콘 링크가 없다는 것만 확인해둠, 필요하면 별도로 요청.
+
+### 버그 수정(사용자 리포트): `npm run tauri dev`로 확인했는데 dock에 아이콘이 적용 안 됨
+
+`tauri.conf.json`의 `bundle.icon` 소스코드(`tauri-codegen`의 `find_icon()`)를 직접 읽어서 두 가지를 확인:
+
+1. **작은 개선**: Linux(Unix)의 "기본 창 아이콘"은 `bundle.icon` 배열에서 `.png`로 끝나는 **첫 번째** 항목을 그대로 쓴다(`config.bundle.icon.iter().find(predicate)`) — 배열에 `icons/32x32.png`가 `icons/icon.png`(512x512)보다 먼저 있어서, 창 자체의 아이콘이 지금까지 아주 작은 32x32짜리로 박혀 있었음. `icons/icon.png`를 배열 맨 앞에 추가해서 고쳤다(창/타이틀바/alt-tab용 아이콘이 더 선명해짐 — 다만 이건 "dock" 문제의 직접적 원인은 아님, 아래 참고).
+2. **진짜 원인**: `tauri-2.11.5/src/app.rs`를 보면, GTK의 application ID(Wayland에서 데스크톱 셸이 실행 중인 창을 `.desktop` 파일과 매칭하는 데 쓰는 값)는 **`app.enableGTKAppId`(스키마 확인: 정확히 이 대소문자, camelCase 아님)가 `true`일 때만** `identifier`(`dev.lightmark.viewer`) 값으로 설정되고, 기본값은 `false` — 즉 지금까지는 **앱에 GTK app_id 자체가 전혀 없었음**. 사용자 세션이 Wayland(`XDG_SESSION_TYPE=wayland`, 확인함)라서, GNOME Shell의 dock은 실행 중인 창을 app_id로 `.desktop` 파일과 매칭해 아이콘을 찾는데, app_id가 아예 없으니 아무 `.desktop` 파일이 있어도 매칭될 수가 없었음 — `.desktop` 파일 유무와 무관한, 더 근본적인 원인.
+
+**수정**: `tauri.conf.json`의 `app`에 `"enableGTKAppId": true` 추가. `cargo check -p app`/`cargo fmt --check`/`cargo clippy --workspace --all-features`/`cargo test --workspace`(13개) 전부 통과. **실기로 재확인**: `npm run tauri dev`를 재시작한 뒤 `busctl --user list`로 확인 — 이전에는 없던 `dev.lightmark.viewer`(+ `.SingleInstance`) D-Bus 이름을 앱이 실제로 세션 버스에 등록한 것을 확인함(= app_id가 이제 실제로 적용됨).
+
+**사용자 승인 하에 로컬 전용 파일 추가(저장소에 커밋 안 됨)**: `~/.local/share/applications/dev.lightmark.viewer.desktop`(`Icon=`은 `src-tauri/icons/icon.png` 절대경로, `StartupWMClass=dev.lightmark.viewer`로 app_id와 매칭) — dev 모드로 띄운 창도 dock이 바로 인식할 수 있도록. 이 파일은 사용자 머신에만 있는 개발 편의용이고, 실제 배포되는 앱은 M8에서 `npm run tauri build`로 패키징하면 `bundle.icon`/`identifier` 기반으로 `.desktop` 파일이 자동 생성되므로 별도 조치 불필요.
+
+### 후속 리포트(사용자, 2건): dock 아이콘 여전히 안 보임 + Apps 목록 아이콘 클릭해도 앱 실행 안 됨
+
+"`npm run tauri dev` 명령으로는 여전히 icon이 보이지 않는데, .desktop 파일을 만들어서 apps에 포함된 앱 목록에서는 아이콘이 보여. 그런데 앱 목록에서는 아이콘을 클릭해도 앱이 실행되지 않네." — 둘 다 원인 확인/수정:
+
+- **아이콘 클릭해도 실행 안 됨**: `desktop-file-validate`로 확인해보니 처음 만든 `Exec=bash -c 'npm run tauri dev'`가 Desktop Entry 스펙상 잘못된 따옴표 처리였음(`error: value ... contains a reserved character ''' outside of a quote`) — GLib 런처가 아예 파싱에 실패해서 클릭해도 조용히 아무 일도 안 일어났던 것. `Exec=npm run tauri dev`(불필요한 `bash -c` 래핑 제거)로 단순화하고, `Path=/home/tramamte/src/rust/lightmark`(작업 디렉터리)를 추가해서 `package.json`/`tauri.conf.json`을 제대로 찾도록 함. `gio launch ~/.local/share/applications/dev.lightmark.viewer.desktop`(더블클릭 시뮬레이션)로 vite+tauri dev+앱 전체가 실제로 정상 기동하고 `busctl --user list`에 `dev.lightmark.viewer`가 뜨는 것까지 확인.
+- **`npm run tauri dev`로 띄운 창의 dock 아이콘은 여전히 안 보임**: GNOME Shell의 Wayland 앱 아이콘 매칭은 실행 중인 창의 app_id를 `.desktop` **파일명**(확장자 제외)과 직접 비교하는 걸 우선시하고, `StartupWMClass`는 X11 시절 창 위주의 보조 수단일 뿐 — 파일명이 `lightmark-dev.desktop`이라 실제 app_id(`dev.lightmark.viewer`)와 안 맞았던 게 원인. 파일명을 정확히 `dev.lightmark.viewer.desktop`으로 변경(내용의 `StartupWMClass=dev.lightmark.viewer`는 보조 수단으로 그대로 유지)해서 해결 — 이제 파일명 자체가 app_id와 완전히 일치하므로, 터미널에서 직접 `npm run tauri dev`로 띄우든 Apps 목록/`gio launch`로 띄우든 같은 app_id를 쓰는 한 매칭돼야 함.
+
+검증 후 앱을 `gio launch`로 다시 띄워둔 상태로 남겨뒀으나, **사용자가 재확인 후 "여전히 안 보여"로 리포트** — 자동화된 진단 도구(xprop/wmctrl)로는 네이티브 Wayland 창을 못 봐서 더 이상 추론만으로는 원인을 좁히기 어려운 상태(GNOME Shell의 Looking Glass Eval은 기본 비활성화라 개발자 도구를 켜야 직접 조회 가능한데, 이건 사용자 계정 설정을 바꾸는 일이라 먼저 물어봄). **사용자가 "일단 미뤄둘게. 패키징 이후 다시 보자"로 보류 결정** — M8 패키징(AppImage/deb/rpm)이 진짜 `.desktop` 파일을 자동 생성하고 나면, 지금 겪는 "dev 모드 전용" 문제 자체가 사라질 가능성이 높아서 그때 다시 보는 게 합리적. 지금까지 한 변경(`enableGTKAppId`, `bundle.icon` 순서, 로컬 `.desktop` 파일)은 전부 무해하니 그대로 둠 — 로컬 `.desktop` 파일은 원래도 저장소에 커밋 안 되는 사용자 머신 전용 파일.
+
 ## 다음에 할 일 (사용자 지정 대기)
-- **인쇄 시 컨텐츠 잘림 버그 — 종결(알려진 한계로 받아들임)**: 위 "인쇄 시 컨텐츠 잘림 방지" 섹션 참고. WebKitGTK가 `break-inside`를 사실상 지원 안 하는 게 확인된 근본 원인이고 CSS로는 못 고침 — JS 기반 수동 페이지네이션 직접 구현/Paged.js 도입/한계로 받아들이기 세 선택지 중 사용자가 **"한계로 받아들이고 넘어가기"**를 선택해서 이 항목은 더 이상 진행하지 않음. 요소별 `break-inside`/`break-after` 규칙(1차 시도)은 무해하므로 코드에 그대로 남아있음.
-- **멀티 윈도우/인스턴스 지원**: 조사만 끝남, 설계/구현 미착수(바로 위 섹션 참고). 재개 시 "다시 시작할 때 먼저 사용자에게 물어야 할 것" 목록부터.
-- **`RunEvent::Opened`(macOS dock 드롭/파일 연결)**: **사용자가 실기로 확인 완료**("3은 확인했어. 문제없어.") — 더 이상 대기 항목 아님.
-- **M8(신규, 아직 미착수, M6에서 분리) — 다시 Ubuntu 기준으로 되돌림**: macOS 전환 중엔 "AppImage 계획이 Linux 전제라 못 씀"이었지만, 다음 세션이 다시 Ubuntu이므로 원래 계획(`patchelf`/`libfuse2t64` 설치 후 `npm run tauri build`로 AppImage 등 패키징)이 다시 유효함 — macOS `.app`/`.dmg` 타깃 대응은 다음에 macOS로 돌아왔을 때 별도로. 릴리스 빌드로 시작 시간/메모리 실측(<1s, <30MB, `CLAUDE.md` 목표)도 미착수.
-- 남은 건 **멀티 윈도우/인스턴스 지원**과 **M8(패키징)** 둘 중 어느 걸 먼저 할지 — 아직 사용자 지정 안 됨. M7(TOC Toggle/Zoom/About), 인쇄 잘림 버그, `RunEvent::Opened`는 전부 종결됨.
+
+**진짜 남은 것 (사용자가 어느 걸 먼저 할지 아직 안 정함):**
+- **M8(패키징 및 배포)**: `patchelf`/`libfuse2t64` 설치 후 `npm run tauri build`로 AppImage 등 패키징(다시 Ubuntu라 원래 계획 유효). 앱 아이콘은 완료, 나머지(실제 번들링, 릴리스 빌드 시작 시간/메모리 실측 <1s/<30MB)는 미착수.
+- **멀티 윈도우/인스턴스 지원**: 조사만 끝남, 설계/구현 미착수(위 "멀티 윈도우/인스턴스 지원" 섹션 참고). 재개 시 "다시 시작할 때 먼저 사용자에게 물어야 할 것" 목록부터.
+- **dock 아이콘 미표시**: 보류 중 — M8 패키징이 끝난 뒤 실제 설치된 앱으로 재검토(바로 위 "앱 아이콘" 섹션 참고).
+
+**종결된 것 (참고용, 더 이상 진행 안 함):**
+- M7(TOC Toggle/Zoom/About) — 전부 완료 및 사용자 확인.
+- 인쇄 시 컨텐츠 잘림 버그 — WebKitGTK가 `break-inside`를 지원 안 하는 게 근본 원인, "알려진 한계로 받아들이기"로 사용자가 확정.
+- macOS `RunEvent::Opened` — 사용자가 실기 확인 완료.
