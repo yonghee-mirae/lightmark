@@ -37,5 +37,5 @@
 
 ## Milestone 8
 - [x] App Icon — `npm run tauri icon`으로 생성, `tauri.conf.json`의 `bundle.icon`이 이미 같은 경로를 참조
-- [ ] Packaging — AppImage 패키징은 별도 진행(fuse/patchelf 미설치)
+- [x] Packaging (macOS) — `npm run tauri build`로 `.app`/`.dmg` 생성, ad-hoc 서명 자동 적용(Apple Developer 계정 없이 소수 배포용). Linux AppImage는 여전히 미착수(fuse/patchelf 미설치).
 - [ ] Release

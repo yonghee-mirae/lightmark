@@ -150,7 +150,7 @@ export type Unwatch = () => void;
   - **버그 수정(사용자 리포트): 세로 스크롤이 있으면 resize가 안 되고, 하면 안 된다고 못박은 가로 스크롤바가 생김.** 헤드리스 Chrome(CDP)으로 TOC에 헤딩 200개를 주입해 직접 재현·측정 - 원인은 핸들을 `position: absolute; right: -3px`로 `lm-toc` 자기 경계 밖까지 튀어나오게 배치한 것: `overflow-y: auto`인 요소에서 자식이 박스 밖으로 넘치면 overflow-wrap/word-break 수정 때 겪은 것과 같은 "overflow-x가 암묵적으로 auto가 되는" 계산이 재발동해 진짜 가로 스크롤바가 생기고, 같은 배치 때문에 핸들의 히트 영역이 실제 세로 스크롤바 자리와 겹쳐 클릭이 스크롤바한테 먼저 가로채짐. 수정: `.lm-toc-list`(`flex: 1 1 auto`)와 `.lm-toc-resize-handle`(`flex: 0 0 6px`)을 `lm-toc { display: flex }`의 서로 겹칠 수 없는 형제로 재배치.
   - **2차 발견(같은 헤드리스 테스트): flex/grid item의 `min-height: auto` 함정.** 위 구조로 바꾸자 이번엔 `lm-toc` 자체 높이가 그리드 셀 고정 높이 대신 컨텐츠 전체 높이로 늘어나 있었음(스크롤 대신 화면 전체를 밀어버림) - `overflow-y: auto`를 `lm-toc` 자신에 걸면 자동 최소 크기가 0이 되는데, 스크롤을 자식으로 옮기며 `lm-toc`가 그 계산 혜택을 못 받게 된 것. `lm-toc`에 `min-height: 0` 명시로 수정. 헤드리스 Chrome으로 가로 스크롤 없음(`scrollWidth === clientWidth`)/세로 스크롤 있어도 핸들이 정확히 히트됨(`elementFromPoint`)을 재검증. 사용자가 실제 앱에서 최종 확인("좋아. 모두 해결됐네.").
 
-**검증**: `docs/PRD.md`를 열어 렌더/TOC 계층/스크롤 시 breadcrumb 갱신 확인. 10k줄 생성 문서에서 파싱+렌더 < 300ms (`performance.now()` 계측, `lm-statusbar`에 dev 전용 표시). Vitest로 toc/breadcrumb/slug 단위 테스트. 추가로: 느린/빠른 스크롤 양방향, 문서 맨 위/아래 경계, 좁은 폭에서 breadcrumb 축약을 수동 확인.
+**검증**: `docs/PRD.md`를 열어 렌더/TOC 계층/스크롤 시 breadcrumb 갱신 확인. 10k줄 생성 문서에서 파싱+렌더 < 300ms (`performance.now()` 계측, `lm-statusbar`에 표시 - 원래 dev 전용이었으나 macOS 세션에서 사용자 요청으로 항상 표시로 변경, `docs/UI_SPEC.md` 참고). Vitest로 toc/breadcrumb/slug 단위 테스트. 추가로: 느린/빠른 스크롤 양방향, 문서 맨 위/아래 경계, 좁은 폭에서 breadcrumb 축약을 수동 확인.
 
 ---
 
@@ -397,7 +397,7 @@ M6(Tauri 통합)에서 분리. 통합이 끝난 뒤 마지막에 하는 게 맞�
 
 ### 멀티 윈도우/인스턴스 지원 (M1~M8 마일스톤 밖, 완료)
 
-M6에서 `tauri-plugin-single-instance`로 "두 번째 실행이 기존 창으로 라우팅+포커스"를 의도된 동작으로 구현·검증했었으나, 사용자가 "LightMark는 뷰어이니 여러 인스턴스를 동시에 띄울 수 있어야 한다"고 뒤늦게 판단해 정반대 방향으로 재설계. 사용자 확인 4건: (1) 툴바 Open/창에 drag&drop → 그 창 내용 교체(기존 유지), (2) 더블클릭/CLI 재실행/macOS "Open With" → 파일마다 새 창, (3) macOS는 창을 전부 닫아도 앱 유지 + Dock 클릭 시 새 창, (4) config.json/state.json 동시 접근 방지 필요.
+M6에서 `tauri-plugin-single-instance`로 "두 번째 실행이 기존 창으로 라우팅+포커스"를 의도된 동작으로 구현·검증했었으나, 사용자가 "LightMark는 뷰어이니 여러 인스턴스를 동시에 띄울 수 있어야 한다"고 뒤늦게 판단해 정반대 방향으로 재설계. 사용자 확인 4건: (1) 툴바 Open/창에 파일 1개 drag&drop → 그 창 내용 교체(기존 유지) — 파일 여러 개를 한꺼번에 drag&drop한 경우는 첫 파일만 이 규칙, 나머지는 (2)와 동일하게 파일마다 새 창(macOS 세션에서 확정, 아래 검증 단락 참고), (2) 더블클릭/CLI 재실행/macOS "Open With" → 파일마다 새 창, (3) macOS는 창을 전부 닫아도 앱 유지 + Dock 클릭 시 새 창, (4) config.json/state.json 동시 접근 방지 필요.
 
 **핵심 메커니즘**: `get_initial_path`(전역 `Mutex` pull) 대신, 창을 만들 때(첫 창 포함) URL 자체에 `?file=<percent-encoded>`를 실어 보냄 — `main.ts`의 기존 `?file=` 처리(원래 Dev 전용, `capabilities.watch`로 게이팅돼 있어 Tauri에도 그대로 적용됨)가 그대로 이를 받음. Tauri 소스(`tauri-2.11.5/src/manager/webview.rs`, `src/protocol/tauri.rs`)로 쿼리스트링이 dev/prod 양쪽에서 살아남는 것을 확인.
 
@@ -408,6 +408,8 @@ macOS 콜드스타트에서 `setup()`이 `RunEvent::Opened`보다 먼저 실행�
 이 설계는 Plan 에이전트로 실제 Tauri 소스(`~/.cargo/registry`에 받아져 있는 버전)를 대조 검증한 뒤, 다시 Plan 에이전트로 비평받아 실제 버그 5개(macOS 콜드스타트 레이스, `prevent_exit` 과잉 적용, 창 닫을 때 watcher 누수, `?file=`이 새로고침마다 재실행되는 문제, `url` 크레이트 direct dependency 누락)를 구현 전에 미리 잡아낸 뒤 반영했음. 상세 내역·근거 코드 인용은 `HANDOFF.md`의 "멀티 윈도우/인스턴스 지원 → 구현 완료" 참고.
 
 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) + 백엔드(`cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`) 전부 통과. `npm run tauri dev` 실기 검증(D-Bus `busctl` tree로 창 개수 확인)도 완료 — single-instance 라우팅/창 생성 자체는 정상 동작. 검증 중 한 차례 `PristineWindow` 재사용이 macOS 게이팅 없이 Linux/Windows의 일반 재실행에도 적용돼 결정 (2)의 "OS 트리거는 새 창"을 어기는 걸 발견 → 자율 루프 중 `cfg!(target_os = "macos")` 게이팅을 추가해 수정하고 재실기 검증(재실행 후 `window/1`·`window/2` 둘 다 존재)까지 완료(상세: `HANDOFF.md`의 "실기 검증(Linux, npm run tauri dev)"/"후속 조치"). macOS 전용 부분(`Opened`/`Reopen`/`ExitRequested`, `PristineWindow` 재사용, 다이얼로그 `set_parent`)은 이 세션이 Linux라 실기 검증 불가 — `RunEvent::Opened`와 같은 처지로 문서에 미검증 남김.
+
+**macOS 세션에서 실기 검증 중 발견/수정한 버그**: 빈(pristine) 창에 파일을 여러 개 한꺼번에 drag&drop하면, 첫 파일이 그 창에 비동기로 로드되는 동안(`watch_file` 호출 전까지 pristine 플래그가 안 지워짐) 나머지 파일들의 `open_new_window` 호출이 거의 동시에 도착해 "지금 드롭 대상이 된 그 창 자신"을 pristine으로 오인해 재사용(`navigate()`)해버리는 레이스가 있었음 — IPC 커스텀 프로토콜이 끊겨 `Load failed` 에러, 결과적으로 창 하나에 파일 하나만 남음. `open_window(app, file, exclude)`에 `exclude` 파라미터를 추가해 "요청을 보낸 창 자신"을 재사용 후보에서 제외하도록 수정(`open_new_window` 커맨드가 자기 창 라벨을 넘김, 다른 4개 호출부는 OS 트리거라 "보낸 창" 자체가 없어 그대로 `None`). 수정 후 사용자가 실기로 재확인, 이 기회에 "drag&drop 다중 파일 → 첫 파일 교체 + 나머지 새 창" 동작 자체를 정식 결정으로 확정(위 (1) 참고). 상세: `HANDOFF.md`.
 
 ---
 

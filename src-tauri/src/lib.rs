@@ -27,16 +27,21 @@ use tauri_plugin_opener::OpenerExt;
 struct WatcherRegistry(Mutex<HashMap<String, backend::FileWatcher>>);
 
 /// The label of a window that was created blank (no file) and hasn't had anything loaded into it
-/// yet - exists only to work around a macOS-specific ordering issue: `setup()` runs (and creates
-/// the first window) *before* `application:openURLs:`/`RunEvent::Opened` can deliver the file the
-/// user actually double-clicked to launch the app, so a window with no file at all would
-/// otherwise be created every time, immediately followed by a second one with the real file. When
-/// `open_window()` is asked to open an actual file and a pristine window is on record, it reuses
-/// that window (navigates it) instead of creating a new one. The flag is cleared as soon as
-/// anything is genuinely loaded into that window - via the reuse path itself, or via the first
-/// `watch_file` call arriving from it (covers the user manually opening a file into it by hand,
-/// e.g. the toolbar Open button, before any `Opened` event arrives) - so a later, unrelated
-/// file-open is never silently routed into a window that's since been repurposed.
+/// yet - exists to work around a macOS-specific ordering issue between `setup()` and
+/// `application:openURLs:`/`RunEvent::Opened`. **Which of the two runs first is not reliable** -
+/// tracing an actual cold double-click showed `Opened` fully handled (a window created with the
+/// file) *before* `setup()` even started, the opposite of what was originally assumed here. Two
+/// complementary fixes cover both orderings: `setup()` itself now checks whether a window was
+/// already created (`NEXT_WINDOW != 0`) before making its own blank one, covering "`Opened` wins
+/// the race" (the case actually observed); this `PristineWindow` reuse covers the other direction -
+/// if `setup()` still wins (e.g. a plain icon double-click with no file, followed shortly after by
+/// a drag onto the dock icon while still starting up) and leaves a blank window behind, a later
+/// `Opened` reuses it (navigates it) instead of leaving that window blank forever alongside a
+/// second one. The flag is cleared as soon as anything is genuinely loaded into that window - via
+/// the reuse path itself, or via the first `watch_file` call arriving from it (covers the user
+/// manually opening a file into it by hand, e.g. the toolbar Open button, before any `Opened`
+/// event arrives) - so a later, unrelated file-open is never silently routed into a window that's
+/// since been repurposed.
 ///
 /// Reuse only ever fires on macOS (`open_window` gates it on `cfg!(target_os = "macos")`) - the
 /// decided behavior for every other OS trigger (double-click, CLI relaunch) is "open a new
@@ -103,18 +108,37 @@ fn file_name_of(path: &str) -> String {
 /// very first one at cold start) just reuses it for free. On macOS only, reuses a still-blank
 /// `PristineWindow` instead of creating a new one when one is on record - see that type's doc
 /// comment for why this is macOS-only.
-fn open_window(app: &AppHandle, file: Option<&str>) -> tauri::Result<WebviewWindow> {
+///
+/// `exclude` is the label of the window this request originated *from*, if any (only
+/// `open_new_window` has one - OS-level triggers like the single-instance callback or
+/// `RunEvent::Opened` have no window context at all, so they pass `None`). Without excluding it,
+/// dropping several files onto a still-pristine window races: the first file loads into that
+/// window client-side (`openPath()`, several IPC round-trips away from the `watch_file` call that
+/// actually clears the pristine flag), while the rest fire `open_new_window` for it almost
+/// immediately - if that lands before the flag clears, it finds "itself" recorded as pristine and
+/// navigates the very window it's supposed to be opening a *new* one alongside, yanking it out
+/// from under the first file's still-in-flight load (surfaces as a `Load failed` IPC error and
+/// only one of the dropped files ending up open - user-reported, reproduced exactly this way).
+fn open_window(
+    app: &AppHandle,
+    file: Option<&str>,
+    exclude: Option<&str>,
+) -> tauri::Result<WebviewWindow> {
     if let Some(f) = file {
         if cfg!(target_os = "macos") {
             let pristine = app.state::<PristineWindow>();
-            let recorded = pristine.0.lock().unwrap_or_else(|e| e.into_inner()).take();
-            if let Some(label) = recorded {
-                if let Some(window) = app.get_webview_window(&label) {
-                    let mut url = window.url()?;
-                    url.set_query(Some(&encode_file_query(f)));
-                    window.navigate(url)?;
-                    let _ = window.set_focus();
-                    return Ok(window);
+            let mut guard = pristine.0.lock().unwrap_or_else(|e| e.into_inner());
+            if guard.as_deref() != exclude {
+                let recorded = guard.take();
+                drop(guard);
+                if let Some(label) = recorded {
+                    if let Some(window) = app.get_webview_window(&label) {
+                        let mut url = window.url()?;
+                        url.set_query(Some(&encode_file_query(f)));
+                        window.navigate(url)?;
+                        let _ = window.set_focus();
+                        return Ok(window);
+                    }
                 }
             }
         }
@@ -253,10 +277,11 @@ fn open_config_folder(app: AppHandle) -> Result<(), String> {
 /// Lets the frontend ask for another window with a specific file (docs/PLAN.md "멀티 윈도우/
 /// 인스턴스 지원") - used when several files are dropped onto one window at once: the first
 /// replaces that window's content in place (already handled purely in the frontend), the rest
-/// each get their own new window via this command.
+/// each get their own new window via this command. `window` is passed so `open_window()` can
+/// exclude it from pristine-window reuse - see that function's doc comment.
 #[tauri::command]
-fn open_new_window(app: AppHandle, path: String) -> Result<(), String> {
-    open_window(&app, Some(&path))
+fn open_new_window(app: AppHandle, window: WebviewWindow, path: String) -> Result<(), String> {
+    open_window(&app, Some(&path), Some(window.label()))
         .map(|_| ())
         .map_err(|e| e.to_string())
 }
@@ -276,7 +301,7 @@ pub fn run() {
             let path = cli::extract_path_arg(&argv, Path::new(&cwd));
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                let _ = open_window(&app, path.as_deref());
+                let _ = open_window(&app, path.as_deref(), None);
             });
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -303,11 +328,23 @@ pub fn run() {
                         .build(),
                 )?;
             }
-            let initial = cli::extract_path_arg(
-                &std::env::args().collect::<Vec<_>>(),
-                &std::env::current_dir()?,
-            );
-            open_window(&app.handle().clone(), initial.as_deref())?;
+            // On macOS, `RunEvent::Opened` for the file that launched this app can arrive and be
+            // fully handled *before* `setup()` runs (confirmed by tracing the actual event order -
+            // the reverse of what was assumed when `PristineWindow` above was designed to reuse a
+            // window `setup()` had already created for exactly this race; user-reported: an extra
+            // blank window appeared alongside the one with the file on a cold double-click).
+            // `NEXT_WINDOW` only ever moves off 0 by a window actually being created, so if it's
+            // no longer 0 here, `Opened` (or, in principle, a same-instant single-instance
+            // callback) already created one and there's nothing left for `setup()` to do - CLI-arg
+            // extraction wouldn't find anything anyway (macOS delivers the file via `Opened`'s
+            // Apple Event, never through argv, confirmed by the same trace).
+            if NEXT_WINDOW.load(Ordering::Relaxed) == 0 {
+                let initial = cli::extract_path_arg(
+                    &std::env::args().collect::<Vec<_>>(),
+                    &std::env::current_dir()?,
+                );
+                open_window(&app.handle().clone(), initial.as_deref(), None)?;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -335,7 +372,7 @@ pub fn run() {
                     // macOS "Open With" multi-select). Also skips non-file URLs (Opened can carry
                     // deep links), so those can't each spawn a blank window.
                     for path in urls.iter().filter_map(|u| u.to_file_path().ok()) {
-                        let _ = open_window(_app_handle, Some(&path.to_string_lossy()));
+                        let _ = open_window(_app_handle, Some(&path.to_string_lossy()), None);
                     }
                 }
                 tauri::RunEvent::Reopen {
@@ -343,18 +380,16 @@ pub fn run() {
                     ..
                 } => {
                     if !has_visible_windows {
-                        let _ = open_window(_app_handle, None);
+                        let _ = open_window(_app_handle, None, None);
                     }
                 }
-                tauri::RunEvent::ExitRequested { code, api, .. } => {
-                    // Only swallow the "closed the last window" quit (that's the only case where
-                    // `code` is `None`) - a real `AppHandle::exit(0)` also fires ExitRequested and
-                    // must be allowed through, or the app becomes unquittable via any
-                    // programmatic path. Cmd+Q itself bypasses this entirely (goes straight to
-                    // `terminate:`), so this only ever governs the last-window-closed case.
-                    if code.is_none() {
-                        api.prevent_exit();
-                    }
+                // Only swallow the "closed the last window" quit (that's the only case where
+                // `code` is `None`) - a real `AppHandle::exit(0)` also fires ExitRequested and
+                // must be allowed through, or the app becomes unquittable via any programmatic
+                // path. Cmd+Q itself bypasses this entirely (goes straight to `terminate:`), so
+                // this only ever governs the last-window-closed case.
+                tauri::RunEvent::ExitRequested { code, api, .. } if code.is_none() => {
+                    api.prevent_exit();
                 }
                 _ => {}
             }

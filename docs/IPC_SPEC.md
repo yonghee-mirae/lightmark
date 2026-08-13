@@ -40,7 +40,8 @@ watch_file + unwatch_file은 프론트 표면에서 `watchFile(path, onChange): 
 
 ## 멀티 윈도우/인스턴스 지원
 `tauri-plugin-single-instance`가 예전에는 두 번째 실행을 기존 창으로 라우팅했으나, LightMark는 뷰어이니 문서마다 별도 창을 띄울 수 있어야 한다는 사용자 결정으로 방향이 바뀜:
-- 툴바 Open / 창에 drag&drop → 그 창 내용 교체(기존 그대로).
+- 툴바 Open / 창에 파일 1개 drag&drop → 그 창 내용 교체(기존 그대로).
+- 창에 파일 여러 개를 한꺼번에 drag&drop → 첫 파일은 그 창 내용 교체, 나머지는 파일마다 새 창(macOS 세션에서 확정 - 처음엔 구현 시점의 임의 확장이었으나 `open_new_window`가 자기 자신이 드롭 대상인 창을 pristine-재사용하는 레이스 버그를 수정 후 정식 결정으로 확정).
 - 더블클릭 / CLI 인자로 재실행 / macOS "Open With"(다중 선택 포함) → 파일마다 새 창.
 - macOS: 창을 전부 닫아도 앱은 떠 있고, Dock 클릭 시 새 창(`RunEvent::Reopen`).
 

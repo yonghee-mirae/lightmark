@@ -311,3 +311,69 @@ backend.onFileDrop?.((paths) => {
     void backend.openWindow?.(path);
   }
 });
+
+// Keyboard shortcuts (user request). `metaKey || ctrlKey` rather than platform-sniffing which one
+// is "the" modifier - simpler, and Ctrl+<key> also working on macOS is harmless. Dispatches the
+// same custom events the toolbar buttons do (docs/UI_SPEC.md "Keyboard Shortcuts") - single
+// source of truth for the resulting action - but has to replicate each button's own
+// hasDocument/capabilities.configFile gating here too, since a dispatched CustomEvent bypasses
+// the <button disabled> attribute that's the only thing normally stopping a click.
+//
+// Matches on `event.code` (the physical key, e.g. "KeyR"), not `event.key` (the character the
+// active layout/input source produces) - bug report: Cmd+Shift+R (Apply) alone didn't fire, only
+// the Shift-modified one, while every plain Cmd+<letter> shortcut worked fine. Reproduced with a
+// Korean input source active: `key` for Shift+R comes back as a Hangul jamo there (2-set Korean
+// uses Shift for double consonants, not "uppercase"), not `'R'` - so the switch below silently
+// never matched. `code` reports the same physical key regardless of layout/input source/Shift.
+window.addEventListener('keydown', (event) => {
+  if (!(event.metaKey || event.ctrlKey)) {
+    return;
+  }
+  const dispatch = (name: string): void => {
+    toolbar.dispatchEvent(new CustomEvent(name, { bubbles: true }));
+  };
+  switch (event.code) {
+    case 'KeyO':
+      event.preventDefault();
+      dispatch('lm-open');
+      break;
+    case 'KeyP':
+      if (hasDocument) {
+        event.preventDefault();
+        dispatch('lm-print');
+      }
+      break;
+    case 'KeyB':
+      if (hasDocument) {
+        event.preventDefault();
+        dispatch('lm-toc-toggle');
+      }
+      break;
+    case 'Equal':
+      event.preventDefault();
+      dispatch('lm-zoom-in');
+      break;
+    case 'Minus':
+      event.preventDefault();
+      dispatch('lm-zoom-out');
+      break;
+    case 'Digit0':
+      event.preventDefault();
+      dispatch('lm-zoom-reset');
+      break;
+    case 'Comma':
+      if (backend.capabilities.configFile) {
+        event.preventDefault();
+        dispatch('lm-config-folder');
+      }
+      break;
+    case 'KeyR':
+      if (event.shiftKey && backend.capabilities.configFile) {
+        event.preventDefault();
+        dispatch('lm-reload-config');
+      }
+      break;
+    default:
+      break;
+  }
+});

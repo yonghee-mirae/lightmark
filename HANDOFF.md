@@ -434,6 +434,7 @@ M6에서 `tauri-plugin-single-instance`로 "두 번째 실행/다른 .md 파일 
 - ~~macOS에서 창을 전부 닫아도 앱이 계속 떠 있으면서 Dock 클릭으로 새 창을 만들 수 있게 할지~~ — **결정됨(사용자 확인)**: "macOS에서는 창을 모두 닫아도 앱이 떠 있는게 맞아." macOS 관례(`RunEvent::Reopen`으로 Dock 클릭 시 새 창) 그대로 구현. Windows/Linux는 이 관례 자체가 없으니 별개로 "마지막 창 닫으면 종료" 유지(플랫폼별로 갈릴 부분이라고 이미 메모해뒀던 대로).
 - ~~macOS "Open With LightMark"로 여러 파일을 한꺼번에 선택했을 때 파일당 창 하나씩 여는 것까지 이번에 같이 고칠지~~ — **결정됨(사용자 확인)**: "여러 파일을 한꺼번에 열면 각각 창이 하나씩 열려야 해." `RunEvent::Opened`의 `urls.first()`만 쓰던 걸 전체 순회하도록 고쳐서, 파일마다 새 창 하나씩 열도록 구현.
 - ~~`config.json`/`state.json` 동시 접근 방지를 이번 범위에 넣을지~~ — **결정됨(사용자 확인)**: "state.json 접근은 당연히 동시접근을 막아야지." 이번 범위에 포함 — `backend::state.rs`(state.json)/`backend::config.rs`(`reload_config()`의 config.json 쓰기) 둘 다 지금은 잠금 없는 비원자적 `fs::write`라, 프로세스 내 `Mutex`(또는 그에 준하는 직렬화 장치)로 보호 필요.
+- **(macOS 세션에서 추가 확정) drag&drop 다중 파일 → 첫 파일은 그 창 교체, 나머지는 파일마다 새 창**: 위 결정 #1은 "drag&drop"을 단일 파일 기준(그 창 내용 교체)으로만 명시했고, 이 다중 파일 확장은 구현 시점에 "Open With 다중 선택 규칙과 동일하게"라는 이유로 임의로 넓혀졌던 부분이었음 — `PristineWindow` 레이스 버그(빈 창에 드롭하면 하나만 열리던 문제, 아래 "버그 수정" 참고) 때문에 처음엔 오히려 이게 의도된 동작인지 사용자도 확신 못 했던 상태. 버그를 고친 뒤 실기로 "처음부터 복수 창이 열리는 것" 확인 → **사용자가 이 동작을 공식 설계 원칙으로 확정**("버그를 고친김에 이 기능을 설계 원칙으로 할게"). 결정 #1의 "drag&drop = 그 창 내용 교체"는 여전히 유효하지만 "1개 파일을 드롭한 경우"로 범위가 좁혀지고, 다중 파일 드롭은 이제 결정 #3(Open With)과 동일한 "파일마다 새 창" 규칙을 따르는 것으로 명시적으로 확정됨 — 더 이상 임의 확장이 아니라 확정된 결정.
 
 **네 가지 질문 전부 결정됨 — 설계/구현 재개 가능.**
 
@@ -476,6 +477,30 @@ M6에서 `tauri-plugin-single-instance`로 "두 번째 실행/다른 .md 파일 
 - 검증 후 `cargo fmt --check`/`cargo build -p app`/`cargo test --workspace`(13+4개) 재확인, 임시 트레이스 원복 상태로 전부 통과.
 
 **후속 조치(자율 루프 중 결정, 사용자 응답 대기 없이 진행): `PristineWindow` 재사용을 macOS 전용으로 스코프 좁힘.** 이건 새로운 결정을 내린 게 아니라, 이미 사용자가 확정한 결정 #2("OS 트리거는 새 창")를 코드가 어기고 있던 걸 그 결정에 맞게 고친 것 — `open_window`의 재사용 분기를 `if cfg!(target_os = "macos") { ... }`로 감쌈(`PristineWindow` 구조체/기록/정리 로직 자체는 그대로 — Linux/Windows에서는 그냥 소비되지 않는 죽은 기록이 될 뿐, 무해함). 다시 `npm run tauri dev`로 재현: 기본 실행(창 1개, `window/1`) → 두 번째 실행(파일 인자) → `busctl --user tree`에 `window/1`과 `window/2`가 **둘 다** 존재하는 것으로 수정 확인(이전엔 재실행 후에도 `window/1` 하나뿐이었음). `cargo fmt`/`cargo build -p app`/`cargo clippy --workspace --all-features`/`cargo test --workspace`(13+4개) 전부 통과. macOS 쪽 동작(콜드스타트 레이스 회피)은 이 변경으로 전혀 안 바뀜 — 여전히 Linux 세션이라 실기 검증 불가, 다음에 macOS로 돌아갔을 때 확인.
+
+**macOS 세션에서 실기 확인**: CLI 재실행으로 빈 창을 재사용하는 동작이 실제로 재현됨(빈 창이 있으면 재사용, 없으면 새 창) — 사용자가 이 동작 자체를 리포트하며 "지금 이대로 유지"로 확정(코드 변경 없음). 위 "다음에 할 일" 참고.
+
+### 버그 수정(사용자 리포트, macOS 실기 검증 중 발견): 빈 창에 md 파일 여러 개를 한꺼번에 drag&drop하면 하나만 열리고 `Load failed` IPC 에러
+
+"빈 창에서 처음 복수 md 파일을 drop하면 콘솔 로그로 `IPC custom protocol failed, ... TypeError: Load failed`가 나오고 하나만 열리는데, 이후 그 창에 다시 복수 md 파일을 drop하면 복수 창이 열려." — 첫 드롭에서만 재현되고 두 번째 드롭부터는 정상 동작하는 게 원인 규명의 핵심 힌트였음.
+
+**원인**: 빈(pristine) 창에 파일 N개를 드롭하면, 첫 파일은 프론트에서 `openPath(first)`로 비동기 처리(readFile → loadFile → watchPath → `watch_file` IPC 호출까지 거쳐야 그 창의 pristine 플래그가 지워짐)되는데, 그 직후 나머지 파일들에 대한 `open_new_window` IPC 호출이 거의 동시에(동기적으로) 나간다. `watch_file`이 아직 pristine 플래그를 못 지운 상태에서 `open_new_window`가 먼저 도착하면, Rust `open_window()`가 "아직 pristine인 창"으로 **지금 드롭 대상이 된 그 창 자신**을 찾아내서 그 창을 다른 파일로 `navigate()`시켜버림 — 페이지가 전환되는 도중이라 IPC 커스텀 프로토콜이 끊겨 `Load failed`가 뜨고, 결과적으로 창 하나에 경쟁에서 이긴 파일 하나만 남음. 이건 원래 "콜드스타트 레이스"만 잡으려던 `PristineWindow` 재사용 로직이 "방금 내가 드롭한 바로 그 창"까지 재사용 후보로 포함하고 있었던 게 근본 원인 — 자기 자신을 재사용 대상에서 제외하는 로직이 없었음.
+
+**확인 과정**: 사용자에게 결정 record 재검토를 먼저 요청 — `HANDOFF.md`의 결정 #1 원문("툴바 Open 버튼이나 창에 drag&drop은 해당 창에서 바로 문서가 바뀌는 게 맞아")은 drag&drop을 "그 창 내용 교체"로만 정의했고 다중 파일 시 나머지를 새 창으로 여는 것에 대한 언급이 없었음 — 그 "나머지는 새 창" 확장은 결정 #3(macOS Open With 다중 선택)의 구현 시점에 "동일 규칙 적용"이라는 이유로 drag&drop에도 임의로 넓혀졌던 것. 사용자가 "복수 창은 Open With에서만"이라고 기억한 게 맞았음. 원인이 확실치 않은 상태였어서 "drag&drop 다중 파일은 원래 단일 파일만 처리하도록 되돌리기(관련 코드 전부 제거)" vs "직접 확인 후 결정" 중 사용자가 후자를 선택 → `main.ts`에 임시 진단 로그(`console.log`로 드롭된 경로 개수, `openWindow` 실패 시 에러 노출) 추가 → 사용자가 실기로 재현해서 정확한 에러 메시지와 "두 번째 드롭부터는 정상"이라는 패턴까지 리포트해줌 — 이것으로 "경로 배열 자체는 다 들어옴, pristine 재사용 레이스가 원인"이라고 확정.
+
+**수정**: `open_window(app, file, exclude)`에 `exclude: Option<&str>` 파라미터 추가 — pristine 창 레이블이 `exclude`와 같으면 재사용하지 않고 그냥 새 창을 만듦. `open_new_window` IPC 커맨드에 `window: WebviewWindow`를 주입받아(`open_file`/`watch_file`/`unwatch_file`과 동일 패턴) 자기 자신의 라벨을 `exclude`로 넘김. 다른 4개 호출부(single-instance 콜백, `.setup()`, `RunEvent::Opened`, `RunEvent::Reopen`)는 전부 OS 트리거라 "요청을 보낸 창" 자체가 없으므로 `exclude: None` — 기존 동작(콜드스타트 레이스 회피, 사용자가 방금 확정한 "빈 창 무기한 재사용") 전혀 안 바뀜. `main.ts`의 임시 진단 로그는 원복.
+
+검증: `cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`(13+4개) + 프론트 `lint`/`typecheck`/`build`/`test`(30개) 전부 통과. **사용자가 재확인 완료**("처음부터 복수창이 열리는 것 확인했어") — 이 기회에 drag&drop 다중 파일 → 파일마다 새 창 동작 자체를 정식 설계 원칙으로 확정함(위 "다시 시작할 때 먼저 사용자에게 물어야 할 것" 목록에 결정 추가).
+
+### 버그 수정(사용자 리포트, macOS 실기 검증 중 발견): 앱이 완전히 꺼진 상태에서 Finder로 `.md` 파일을 열면 그 파일이 든 창 위에 빈 창이 하나 더 뜸
+
+`Opened`(더블클릭/파일 연결/Open With)를 실기로 검증하려면 Launch Services에 등록된 실제 `.app` 번들이 필요해서(raw dev 바이너리는 Finder가 "이 파일을 열 수 있는 앱"으로 인식 못 함) `npm run tauri build -- --debug`로 임시 디버그 번들을 만들고 `lsregister -f`로 등록해서 검증 진행. "앱이 이미 백그라운드에서 떠 있는 상태(창은 다 닫혀 있음)에서 열면 파일 하나만 정상적으로 열리고, 완전히 꺼진 상태(콜드스타트)에서 열 때만 재현된다"는 사용자의 정확한 관찰이 원인 규명의 핵심 힌트였음.
+
+**진단 과정**: 처음엔 `log::info!`로 추적하려 했으나 콜드스타트 재현에서는 그 로그 자체가 하나도 안 찍힘(`.setup()`이 빈 창을 만드는 로그만 보임, `Opened`나 파일 있는 `open_window` 호출 로그는 아예 없음) — `tauri_plugin_log`가 `.setup()` 도중에야 등록되는데, 만약 `Opened`가 `.setup()`보다 먼저 처리된다면 그 시점엔 로거가 아직 없어서 로그 자체가 조용히 버려진다는 가설을 세움. `log`/`stdout`/`stderr`(GUI로 띄운 프로세스는 콘솔 자체가 없어 캡처 불가, `eprintln!`도 확인해봤지만 안 잡힘) 어디에도 의존하지 않는, `/tmp`에 직접 파일을 append하는 임시 추적 함수를 만들어 `single_instance` 콜백/`.setup()`/`run()`의 모든 이벤트/`open_window` 진입점에 심어서 재현 — **정확한 순서가 나옴**: `RunEvent::Opened`(파일 있음) 처리 완료(창 1개 생성) → **그 다음에야** `.setup()` 진입 → `.setup()`이 아무것도 모른 채 빈 창을 또 생성. 기존 코드 주석("`setup()`이 `Opened`보다 항상 먼저 실행된다")이 이번 실행에서는 정반대였음을 실측으로 확정.
+
+**수정**: `.setup()`이 창을 만들기 전에 `NEXT_WINDOW`(창 생성마다 증가하는 전역 카운터)가 아직 `0`인지 먼저 확인 — `0`이 아니면 이미 다른 경로(`Opened`)가 창을 만들었다는 뜻이므로 자기는 만들지 않음. `PristineWindow` 재사용 로직(반대 순서 — `.setup()`이 먼저 이기는 경우)은 그대로 유지해서 양쪽 순서 모두 커버, 그 doc comment도 "순서가 보장 안 됨"으로 정정. Linux/Windows는 `Opened` 자체가 없어서(`.setup()`만 창을 만듦) 이 경쟁이 존재하지 않아 영향 없음. 진단 코드(`debug_trace` 함수, 각 지점의 임시 로그)는 원인 확정 후 전부 원복.
+
+검증: `cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`(13+4개) 전부 통과. **사용자가 디버그 번들로 재현 → 수정 → 재현 안 됨(창 하나만 뜸)까지 실기로 재확인 완료.** 테스트용 디버그 번들(`target/debug/bundle`)과 로그 파일은 확인 후 정리.
 
 ## 인쇄 시 컨텐츠 잘림 방지 (신규)
 
@@ -579,17 +604,66 @@ Zoom/TOC Toggle과 같은 전례(세션 전용, config.json에 안 씀)를 그�
 
 **최종 확인(사용자): "좋아. 모두 해결됐네."** — TOC Resizable 자체와 위 두 버그 수정(가로 스크롤바 생김, 세로 스크롤 있을 때 resize 안 됨) 모두 실제 앱에서 확인 완료.
 
+## 개선(사용자 요청, 신규): 상태바 렌더링 시간 표시를 항상 켜둠
+
+사용자가 "상태바에 렌더링 시간 표시 기능이 사라졌다"고 리포트 — 버그가 아니라 M2부터 있던 의도된 동작이었음(`lm-statusbar.ts`의 `.lm-status-perf`가 `import.meta.env.DEV`로 게이팅돼 있어서 `npm run tauri dev`/`npm run dev`에서만 보이고, `npm run tauri build`로 만든 빌드(아까 `Opened` 버그 검증용으로 만든 디버그 번들 포함)에서는 항상 안 보임 — 사용자가 그 디버그 번들을 보고 있었던 것). 설명을 듣고 사용자가 "이 기능은 그냥 항상 켜두는 게 좋겠다"고 요청 → `import.meta.env.DEV` 게이팅 제거, 빌드 모드와 무관하게 항상 표시. `docs/UI_SPEC.md`(StatusBar 필드 목록에 렌더링 시간 추가)/`docs/PLAN.md`(M2 검증 문구의 "dev 전용" 표현 정정)도 같이 수정.
+
+검증: 프론트 `lint`/`typecheck`/`build`/`test`(30개) 전부 통과.
+
+## macOS 패키징 (신규, M8) — 팀원 등 소수 배포용
+
+Apple Developer Program(유료, 연 $99) 미가입 상태 — 서명/공증(notarization) 없이 소수 배포하는 방향으로 확정. 이번엔 팀원 전부 Apple Silicon이라 유니버설 바이너리는 불필요, arm64 전용으로 진행.
+
+- **빌드**: `npm run tauri build`(릴리스 프로필) → `src-tauri/target/release/bundle/macos/LightMark.app`(15MB 바이너리) + `.../dmg/LightMark_0.1.0_aarch64.dmg`(6.6MB).
+- **서명**: 추가 조치 없이 `adhoc,linker-signed`로 자동 서명됨(Apple Silicon에서 Mach-O 바이너리는 최소 ad-hoc 서명이 있어야 실행되는데, 컴파일/링크 과정에서 자동으로 붙음 — `codesign -dv`로 확인). Apple 발급 Developer ID 서명이 아니라서 Gatekeeper 경고는 그대로 남음 — 받는 사람이 `xattr -cr`로 quarantine 속성을 지우거나 시스템 설정에서 "그래도 열기"로 우회해야 함(안내문 전달).
+- **실기 확인**: 바이너리를 직접 실행해서 크래시 없이 살아있는 것 확인. `open`/`open -a` 명령으로는 이 자동화 세션에서 조용히 실패했음(Launch Services 미등록 관련 세션 한정 이슈로 추정 — 아까 `Opened` 버그 디버그 번들 때는 `lsregister -f`로 등록해서 `open -a`가 잘 됐었음) — 실제 최종 사용자는 Finder 더블클릭으로 열 것이라 문제 없음.
+
+## 개선(사용자 요청, 신규): 키보드 단축키 추가
+
+`Cmd`(macOS)/`Ctrl`(Windows/Linux) 조합 6종 추가 — `Cmd+O`(Open)/`Cmd+P`(Print)/`Cmd+B`(TOC 토글)/`Cmd+=`·`Cmd+-`·`Cmd+0`(Zoom)/`Cmd+,`(Config 폴더)/`Cmd+Shift+R`(Apply). 사용자에게 범위를 먼저 확인(멀티 셀렉트 질문)받아 About은 제외.
+
+- `main.ts`에 `window.addEventListener('keydown', ...)` 하나로 구현 — 각 단축키가 해당 툴바 버튼과 **똑같은 커스텀 이벤트**(`lm-open`/`lm-print`/`lm-toc-toggle`/`lm-zoom-*`/`lm-config-folder`/`lm-reload-config`)를 `toolbar` 엘리먼트에 직접 dispatch — 동작 로직은 단일 소스(버튼 클릭 핸들러)를 그대로 재사용. 다만 `disabled` 버튼 속성은 프로그램적 dispatch를 막지 못하므로, 각 버튼이 이미 갖고 있는 게이트 조건(`hasDocument`/`capabilities.configFile`)을 단축키 핸들러에도 그대로 복제.
+- `metaKey || ctrlKey`로 판단(플랫폼 감지 없이 둘 다 허용 — macOS에서 Ctrl+O도 같이 되는 것 정도는 무해).
+- **`Cmd+T`(TOC에 자연스러워 보이는 후보)는 의도적으로 안 씀** — 실제 브라우저(Web/Dev 모드)에서 새 탭 열기로 예약된 진짜 브라우저 단축키라 페이지 JS의 `preventDefault()`로도 못 막음(Cmd+W/Cmd+N/Cmd+Q와 같은 부류) — 대신 VS Code 등의 "사이드바 토글" 관례인 `Cmd+B` 채택. **`Cmd+R`도 피함** — 일반적인 페이지 새로고침 단축키와 겹쳐서 Apply엔 `Cmd+Shift+R` 사용.
+- `docs/UI_SPEC.md`에 전체 단축키 표 추가.
+
+검증: 프론트 `lint`/`typecheck`/`build`/`test`(30개) 전부 통과.
+
+### 버그 수정(사용자 리포트): Apply(`Cmd+Shift+R`)만 동작 안 함, 나머지 5개는 정상
+
+**원인**: 판별 기준이 `event.key`(활성 입력 소스/레이아웃이 만들어내는 "문자")였는데, 한국어 입력 소스가 켜져 있으면 Shift+R 조합의 `event.key`가 `'R'`이 아니라 한글 자모로 나옴(한글 2벌식에서 Shift는 "대문자"가 아니라 쌍자음을 만드는 용도라 매핑이 다름) — 그래서 `case 'R':`가 조용히 매칭 실패. Shift가 없는 나머지 5개(Cmd+O/P/B/,/0, Cmd+=/-)는 이 문제가 없어서 전부 정상 동작했던 것.
+
+**수정**: 판별 기준을 `event.key`에서 `event.code`(활성 레이어/입력 소스와 무관하게 항상 같은 값을 주는 "물리적 키 위치", 예: `KeyR`, `Equal`, `Digit0`)로 전부 교체. Shift 여부는 `code`에 안 실리므로 `KeyR` 케이스에서 `event.shiftKey`를 별도로 확인. 덕분에 `Equal` 하나로 `Cmd+=`/`Cmd+Shift+=`(=`Cmd++`) 둘 다 자연스럽게 커버되어 기존의 `'='`/`'+'` 두 케이스도 하나로 줄었음.
+
+검증: 프론트 `lint`/`typecheck`/`build`/`test`(30개) 전부 통과. **사용자가 6개 단축키 전부 재확인 완료**("확인했어. 다 잘 되네").
+
+## 재패키징
+
+키보드 단축키/상태바 렌더링 시간 변경사항을 포함해 `npm run tauri build`로 macOS 릴리스 번들 재생성. 위 "macOS 패키징" 절차 그대로(ad-hoc 서명 자동, 바이너리 직접 실행으로 크래시 없음 확인) — 새로 기록할 내용 없음, 결과물(`.app`/`.dmg`) 경로만 동일하게 갱신됨.
+
+## `README.md` 신규 작성 (사용자 요청)
+
+저장소 루트에 사용자 대상 `README.md`를 처음으로 작성함(그 전까지 없었음). 요청받은 항목 그대로: 앱 이름/버전/개발자(`core/appInfo.ts`의 `APP_NAME`/`APP_VERSION`/`APP_AUTHOR`와 일치), 소개, 특징, 기능, 설치(macOS만 — Windows/Linux는 "추후 추가"로 명시), 단축키(`docs/UI_SPEC.md`의 표 재사용). 이어서 사용자가 "설정파일 수정 방법도 추가해줘"로 한 섹션 더 요청 → 위치(OS별 3개 경로)/Config 버튼으로 여는 법/Apply로 재시작 없이 적용/파일 깨짐·삭제 시 자동 복구/필드 12개 전체를 타입·기본값·설명 표로 정리해서 추가(`docs/CONFIG_SPEC.md`/`backend/src/config.rs`의 스키마와 대조해서 작성, 값 일치 확인).
+
+**유지보수 참고(다음 세션들을 위해)**: `README.md`는 이제 기능/설정 필드/단축키가 바뀔 때마다 `docs/UI_SPEC.md`/`docs/CONFIG_SPEC.md`와 함께 갱신해야 하는 대상임 — 지금까지는 `docs/*.md`만 챙기면 됐지만 앞으로는 이 파일도 같이 봐야 함. 검증 대상은 아님(마크다운 산문이라 lint/build 대상 없음) — 내용이 코드/스펙과 실제로 일치하는지는 매번 직접 대조 필요.
+
 ## 다음에 할 일 (사용자 지정 대기)
 
 **진짜 남은 것:**
-- **`PristineWindow` macOS 전용 스코프에 대한 사용자 확인(선택)**: 자율 루프 중 결정 #2("OS 트리거는 새 창")에 맞춰 macOS 전용으로 이미 고쳐서 재검증까지 마침(위 "후속 조치" 참고) — 되돌릴 필요는 없다고 보지만, 사용자가 원래(플랫폼 무관 일반 재사용)를 선호하면 알려주면 됨. 블로킹 아님.
-- **멀티 윈도우/인스턴스 지원의 GUI 조작 부분 실기 확인**: drag&drop 다중 파일, 창 닫기 시 watcher 정리, `?file=` 리로드 안전성은 코드 리뷰로는 정상이지만 이 세션의 Wayland 환경에서는 마우스 조작 자동화가 안 돼서 직접 못 눌러봄 - 사용자가 직접 확인 필요. macOS 전용 부분(`Opened`/`Reopen`/`ExitRequested`, `PristineWindow` 재사용, 다이얼로그 `set_parent`)은 Linux 세션이라 애초에 검증 불가 - macOS로 돌아갔을 때 마무리.
-- **M8(패키징 및 배포)**: `patchelf`/`libfuse2t64` 설치 후 `npm run tauri build`로 AppImage 등 패키징(다시 Ubuntu라 원래 계획 유효). 앱 아이콘은 완료, 나머지(실제 번들링, 릴리스 빌드 시작 시간/메모리 실측 <1s/<30MB)는 미착수.
+- **멀티 윈도우/인스턴스 지원의 GUI 조작 부분 실기 확인(진행 중)**: macOS 세션에서 실기 확인 진행 — CLI 재실행으로 새 창이 뜨는 것 확인됨. 그 과정에서 `PristineWindow`(빈 창 재사용)가 macOS에서 실제로 관찰됨: 빈 창이 있는 상태에서 문서를 열면 그 빈 창이 재사용(창 개수 안 늘어남)되고, 그 다음 문서부터는 진짜 새 창이 열림 — 사용자가 직접 겪고 리포트, **"지금 동작(플랫폼 무관 없이 macOS에서 무기한 재사용) 그대로 유지"로 확정**(플랫폼 무관 일반화나 콜드스타트 순간으로 범위 축소 둘 다 기각). 코드 변경 없음. **drag&drop 다중 파일도 실기 확인 완료**(빈 창에 여러 파일을 드롭하면 pristine 재사용 레이스로 하나만 열리던 버그 발견/수정 → 재확인까지 완료, 위 "버그 수정" 참고) — 이 동작(첫 파일은 창 교체, 나머지는 새 창)을 정식 설계 원칙으로 확정.
+
+**창 닫기 시 watcher 정리도 실기 확인 완료.** `ps -M`으로 프로세스 스레드 수를 관찰하니 창을 닫아도 스레드 수가 즉시 줄지 않고 서서히 줄어드는 게 보여서, 우리 코드가 정리를 놓치는 건지 확인이 필요했음 — `backend::FileWatcher`에 임시 `Drop` 로그, watcher 백그라운드 스레드의 `rx.recv()` 루프가 실제로 끝나는 지점에도 임시 로그를 추가해서 재현. **결과: 두 로그가 창을 닫는 순간 거의 동시에 찍힘** — `.on_window_event`의 `Destroyed` 핸들러가 `WatcherRegistry`에서 `remove()`하는 순간 `FileWatcher`(그리고 그 안의 `notify::RecommendedWatcher`, 백그라운드 스레드까지)가 정확히 동기적으로 즉시 정리된다는 뜻. `ps -M`에서 보였던 "서서히 줄어드는" 스레드는 이 watcher와 무관한, Tauri/WebKit 자체의 내부 스레드풀(WebKit 자체 스레드, Tokio 워커 등) 정리 지연으로 판단 — LightMark 코드의 문제가 아니고, 애초에 우리가 제어할 수 있는 영역도 아님. 진단 코드는 확인 후 원복(`git diff` 없음 확인).
+
+**`?file=` 리로드 안전성도 실기 확인 완료.** CLI 재실행으로 창에 파일(PRD.md)을 연 뒤 그 창에서 다른 파일(ARCHITECTURE.md)로 전환, `tauri dev`가 떠 있는 상태에서 프론트 소스를 저장해 Vite 전체 리로드를 유발 → 리로드 후 PRD.md가 되살아나지 않고 빈 화면(드롭 안내)으로 남는 것 확인(`history.replaceState`가 `?file=`을 즉시 지워서 리로드 시 재실행되지 않는다는 설계 의도가 실제로 동작함).
+- **macOS 전용 코드 경로 실기 확인**: `ExitRequested`(마지막 창 닫아도 프로세스 생존 — `ps aux` 확인), `Reopen`(창 없을 때 Dock 클릭 시 새 창), Open 다이얼로그 `set_parent`(창 2개 중 포커스된 창에 정확히 시트로 붙음) **3가지는 `npm run tauri dev`로 실기 확인 완료** — 전부 의도대로 동작. `Opened`(더블클릭/파일 연결/Open With)는 버그를 발견/수정하고 재확인까지 완료 — 아래 "실기 검증" 다음의 "버그 수정(콜드스타트)" 참고.
+- **drag&drop 다중 파일(첫 파일 교체 + 나머지 새 창) 동작을 Linux/Windows에서도 실기 확인 필요.** 오늘 고친 레이스 버그(`open_window`의 pristine 재사용 로직)는 `cfg!(target_os = "macos")`로 게이팅돼 있어서 코드상으로는 Linux/Windows에 아예 안 타는 분기이고, 그래서 이론적으로는 두 OS 모두 애초에 이 버그 없이 "파일마다 새 창"이 바로 됐어야 함 — 하지만 이 정확한 시나리오(창에 여러 파일 한꺼번에 drag&drop)는 Ubuntu 세션에서 Wayland 환경의 마우스 자동화 제약으로 실기 테스트를 못 했고(CLI 재실행 방식의 새 창 생성만 확인됨), Windows는 아예 아직 한 번도 테스트한 적 없음. 코드 리뷰상의 추론일 뿐 실기 확인은 안 된 상태 — Linux나 Windows로 넘어가면 반드시 직접 드래그&드롭해서 확인.
+- **M8(패키징 및 배포)**: macOS 쪽은 소수 배포용 `.app`/`.dmg` 빌드 완료(위 "macOS 패키징" 참고). Linux는 여전히 `patchelf`/`libfuse2t64` 설치 후 AppImage 등 패키징 미착수(Ubuntu로 돌아갔을 때). 릴리스 빌드 시작 시간/메모리 실측(<1s/<30MB)은 두 플랫폼 다 미착수.
 - **dock 아이콘 미표시**: 보류 중 — M8 패키징이 끝난 뒤 실제 설치된 앱으로 재검토(위 "앱 아이콘" 섹션 참고).
 
 **종결된 것 (참고용, 더 이상 진행 안 함):**
 - M7(TOC Toggle/Zoom/About) — 전부 완료 및 사용자 확인.
 - 인쇄 시 컨텐츠 잘림 버그 — WebKitGTK가 `break-inside`를 지원 안 하는 게 근본 원인, "알려진 한계로 받아들이기"로 사용자가 확정.
-- macOS `RunEvent::Opened`(M6 구현분) — 사용자가 실기 확인 완료(멀티 윈도우 지원으로 관련 코드 경로가 다시 바뀌어서, 이번에 새로 짠 `Opened`/`Reopen` 처리는 별도로 재검증 필요 - 위 참고).
 - 멀티 윈도우/인스턴스 지원의 single-instance 라우팅/창 생성 자체(빈 창 1개 기본 실행, 재실행 시 크래시 없이 `open_window` 호출, 재실행이 새 창을 여는 것) — `busctl` D-Bus 트리로 실기 확인 완료(위 "실기 검증"/"후속 조치" 참고).
 - TOC Resizable(구현 + 가로 스크롤바/세로 스크롤 시 resize 안 되던 버그 2건) — 사용자가 실제 앱에서 확인 완료("좋아. 모두 해결됐네.").
+- macOS 전용 코드 경로 4가지(`ExitRequested`/`Reopen`/`set_parent`/`Opened`) — 전부 디버그 번들·`npm run tauri dev`로 실기 확인 완료. `Opened`는 콜드스타트 시 빈 창이 하나 더 뜨는 버그를 발견/수정하고 재확인까지 완료(위 "버그 수정" 참고).
+- 키보드 단축키 6종 — 사용자가 실제 앱에서 전부 확인 완료(Apply만 한국어 입력 소스 관련 버그가 있어서 `event.code` 기반으로 수정 후 재확인, 위 "버그 수정" 참고).

@@ -36,4 +36,20 @@ Rendered Markdown Only
 기본은 컬럼 폭 제한 없이 뷰어 폭 전체를 채운다 - word-wrap은 실제 창 가장자리에서만 일어나고, 가독성을 위한 고정 컬럼은 두지 않는다(M7). 좁은 컬럼을 원하면 `config.json`의 `viewerMaxWidth`를 직접 편집한다(그래픽 설정 UI 없음, `CLAUDE.md` Config Rules) - 현재 값은 StatusBar에 읽기 전용으로 표시.
 
 ## StatusBar
-Filename, 폭 제한 표시(파일명 바로 오른쪽, M7 - `config.json`의 `viewerMaxWidth`를 읽기 전용으로 표시, 편집은 config.json에서만. `Width: Full` 또는 `Width: {값}px`), Zoom
+Filename, 폭 제한 표시(파일명 바로 오른쪽, M7 - `config.json`의 `viewerMaxWidth`를 읽기 전용으로 표시, 편집은 config.json에서만. `Width: Full` 또는 `Width: {값}px`), 렌더링 시간(`Render: {ms}ms` - 원래 dev 전용이었으나 사용자 요청으로 항상 표시), Zoom
+
+## Keyboard Shortcuts
+
+(macOS 전환 세션에서 추가, 사용자 요청) `Cmd`(macOS)/`Ctrl`(Windows/Linux) 조합. 해당 툴바 버튼과 동일한 이벤트를 발생시키므로 버튼이 `disabled`인 조건(문서 없음/`capabilities.configFile=false`)에서는 단축키도 동작하지 않음.
+
+| 단축키 | 동작 |
+|---|---|
+| `Cmd+O` | Open |
+| `Cmd+P` | Print (문서 열려있을 때만) |
+| `Cmd+B` | TOC 토글 (문서 열려있을 때만) |
+| `Cmd+=`/`Cmd+-` | Zoom 확대/축소 |
+| `Cmd+0` | Zoom 리셋(기본 배율로) |
+| `Cmd+,` | Config 폴더 열기 (Tauri에서만) |
+| `Cmd+Shift+R` | Apply (Tauri에서만) — 일반적인 페이지 새로고침(`Cmd+R`)과 겹치지 않도록 Shift 추가 |
+
+`Cmd+T`는 의도적으로 안 씀 — 실제 브라우저(Web/Dev 모드 개발 시)에서 새 탭 열기로 예약되어 있어 페이지 JS가 가로챌 수 없음.

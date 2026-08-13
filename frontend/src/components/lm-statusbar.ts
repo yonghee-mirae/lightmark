@@ -1,4 +1,6 @@
-// The perf indicator is dev-only (docs/PLAN.md M2 verification: parse+render < 300ms for 10k lines).
+// The perf indicator used to be dev-only (docs/PLAN.md M2 verification: parse+render < 300ms for
+// 10k lines) but the user asked to always show it, dev or not (M2 gated it on import.meta.env.DEV;
+// that gate is gone).
 
 export class LmStatusbar extends HTMLElement {
   private filename = 'No file open';
@@ -19,7 +21,7 @@ export class LmStatusbar extends HTMLElement {
     this.innerHTML = `
       <span class="lm-status-filename"></span>
       <span class="lm-status-width"></span>
-      ${import.meta.env.DEV ? '<span class="lm-status-perf"></span>' : ''}
+      <span class="lm-status-perf"></span>
       <span class="lm-status-zoom"></span>
     `;
     this.filenameEl = this.querySelector('.lm-status-filename');
