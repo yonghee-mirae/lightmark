@@ -10,7 +10,7 @@ import { buildToc } from './core/toc';
 import { applyTheme } from './core/theme';
 import { DEFAULT_CONFIG, configsEqual } from './types/config';
 import type { Config } from './types/config';
-import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_RESET } from './components/lm-toolbar';
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from './components/lm-toolbar';
 import type { LmToolbar } from './components/lm-toolbar';
 import type { LmViewer, FileDropDetail, ActiveHeadingDetail } from './components/lm-viewer';
 import type { LmStatusbar } from './components/lm-statusbar';
@@ -29,6 +29,11 @@ let tocVisible = DEFAULT_CONFIG.tocVisible;
 // Session-only (docs/PLAN.md M7, same reasoning as tocVisible above) - starts from the config's
 // zoom, but the +/-/reset buttons below never write back to config.json.
 let zoom = DEFAULT_CONFIG.zoom;
+// The app's configured default zoom level (config.json's `zoom`) - what the reset button/label
+// mean by "default" (user feedback: not a hardcoded 100). Kept in sync with `zoom` wherever
+// config.zoom itself is the source (initial load, Apply below) - only the +/-/reset buttons ever
+// move `zoom` away from this on their own.
+let defaultZoom = DEFAULT_CONFIG.zoom;
 void backend.readConfig().then((config) => {
   currentConfig = config;
   applyTheme(config);
@@ -37,6 +42,9 @@ void backend.readConfig().then((config) => {
   zoom = config.zoom;
   toolbar.setZoom(zoom);
   statusbar.setZoom(zoom);
+  defaultZoom = config.zoom;
+  toolbar.setDefaultZoom(defaultZoom);
+  updateWidthDisplay();
 });
 
 const maybeToolbar = document.querySelector<LmToolbar>('lm-toolbar');
@@ -97,8 +105,23 @@ function setZoom(value: number): void {
 }
 
 toolbar.addEventListener('lm-zoom-out', () => setZoom(zoom - ZOOM_STEP));
-toolbar.addEventListener('lm-zoom-reset', () => setZoom(ZOOM_RESET));
+toolbar.addEventListener('lm-zoom-reset', () => setZoom(defaultZoom));
 toolbar.addEventListener('lm-zoom-in', () => setZoom(zoom + ZOOM_STEP));
+
+// Purely config-driven, not session-adjustable (user feedback: config.json is the only editing
+// path here, lm-statusbar just displays it - CLAUDE.md's "No graphical settings editor"). 0
+// (unlimited, default): .lm-markdown fills the whole viewer width. A positive value caps it at
+// that many px, centered - see the `.lm-content.lm-width-limited` CSS rule and the
+// --lm-viewer-max-width variable it reads. Re-run on Apply (below) too, since currentConfig can
+// change then.
+function updateWidthDisplay(): void {
+  const width = currentConfig.viewerMaxWidth;
+  const limited = width > 0;
+  contentEl.classList.toggle('lm-width-limited', limited);
+  contentEl.style.setProperty('--lm-viewer-max-width', limited ? `${width}px` : '');
+  statusbar.setViewerMaxWidth(width);
+}
+updateWidthDisplay();
 
 toolbar.setCapabilities(backend.capabilities);
 
@@ -223,7 +246,16 @@ toolbar.addEventListener('lm-reload-config', () => {
       return;
     }
     currentConfig = config;
-    applyTheme(config);
+    // Keep whatever zoom level the user has manually set this session - Apply shouldn't silently
+    // reset it back to config.json's zoom just because other fields changed (user feedback:
+    // "문서를 읽은 상태에서 zoom level을 변경하고... apply를 누르면, 기본 zoom level로 reset돼"). Pass
+    // the current session `zoom`, not config.zoom, so applyTheme() leaves --lm-zoom alone.
+    applyTheme({ ...config, zoom });
+    // config.zoom itself may still have changed though - defaultZoom (what the reset button/label
+    // point to) tracks that, independently of the live `zoom` above.
+    defaultZoom = config.zoom;
+    toolbar.setDefaultZoom(defaultZoom);
+    updateWidthDisplay();
     rerenderCurrentDocument();
   });
 });

@@ -20,6 +20,8 @@ pub struct Config {
     pub mermaid_theme: String,
     pub katex: bool,
     pub print_use_light_theme: bool,
+    /// Max viewer content width in px; `0` means unlimited (docs/CONFIG_SPEC.md).
+    pub viewer_max_width: u32,
 }
 
 impl Default for Config {
@@ -36,6 +38,7 @@ impl Default for Config {
             mermaid_theme: "auto".to_string(),
             katex: true,
             print_use_light_theme: true,
+            viewer_max_width: 0,
         }
     }
 }

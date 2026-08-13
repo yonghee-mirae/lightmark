@@ -12,6 +12,10 @@ export interface Config {
   mermaidTheme: string;
   katex: boolean;
   printUseLightTheme: boolean;
+  // Max viewer content width in px. `0` means unlimited (fills the viewer pane, docs/PLAN.md M7) -
+  // a user-entered value (via lm-statusbar's width input) caps it instead. Not a boolean switch
+  // (user feedback) - the limit itself is the value the user types, not just an on/off.
+  viewerMaxWidth: number;
 }
 
 // Config is a flat object of primitives (no nested objects/arrays), so a field-by-field ===
@@ -33,4 +37,5 @@ export const DEFAULT_CONFIG: Config = {
   mermaidTheme: 'auto',
   katex: true,
   printUseLightTheme: true,
+  viewerMaxWidth: 0,
 };

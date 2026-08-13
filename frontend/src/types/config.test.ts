@@ -15,6 +15,7 @@ describe('DEFAULT_CONFIG', () => {
       mermaidTheme: 'auto',
       katex: true,
       printUseLightTheme: true,
+      viewerMaxWidth: 0,
     });
   });
 });

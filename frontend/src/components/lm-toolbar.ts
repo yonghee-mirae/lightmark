@@ -2,12 +2,15 @@
 // actually do them (Tauri - docs/CLAUDE.md "Application only provides: Open Config Folder /
 // Reload Config", none of which existed as a UI entry point until M6). Zoom is three buttons (a
 // single "Zoom" button wouldn't be convenient to adjust with, user feedback): -/+ step by
-// ZOOM_STEP and disable at ZOOM_MIN/ZOOM_MAX, the middle button shows the current percentage and
-// resets to ZOOM_RESET on click. main.ts owns the actual zoom value/clamping and calls setZoom()
-// - this component only renders it and disables -/+ at the bounds (docs/PLAN.md M7).
+// ZOOM_STEP and disable at ZOOM_MIN/ZOOM_MAX, the middle button reads the app's *configured*
+// default zoom (config.json's `zoom` - user feedback: that value IS the app's default zoom level,
+// so this button shouldn't show a hardcoded "100%" when the default is something else) rather
+// than the live value - the current zoom is already shown in lm-statusbar - and resets to that
+// default on click. main.ts owns the actual zoom value/clamping and calls setZoom()/
+// setDefaultZoom() - this component only renders them (disables -/+ at the bounds, and shows the
+// default on the middle button) (docs/PLAN.md M7).
 // Labels are U+2212 MINUS SIGN (not a plain hyphen - at the same font-size a hyphen reads
-// visibly shorter/thinner than "+", so the two didn't look like a matched pair) and a live
-// percentage (not a bare "0" - a digit's glyph looks like a different size again next to +/−).
+// visibly shorter/thinner than "+", so the two didn't look like a matched pair).
 // Other labels are one word each - screen width may be narrow (user feedback). No Reset button
 // (removed, M7): deleting config.json and clicking Apply (label only - still
 // `reload-config`/`reload_config()` under the hood) now self-heals back to a fresh default file -
@@ -41,6 +44,9 @@ export class LmToolbar extends HTMLElement {
   // Session-only, mirrors main.ts's own state (docs/PLAN.md M7) - starts at ZOOM_RESET
   // (DEFAULT_CONFIG.zoom) since main.ts only overrides this after readConfig() resolves.
   private zoom = ZOOM_RESET;
+  // Mirrors main.ts's own state - the app's configured default zoom (config.json's `zoom`), not a
+  // hardcoded 100 (user feedback). Starts at ZOOM_RESET for the same reason as `zoom` above.
+  private defaultZoom = ZOOM_RESET;
 
   connectedCallback(): void {
     this.render();
@@ -75,6 +81,14 @@ export class LmToolbar extends HTMLElement {
     this.render();
   }
 
+  setDefaultZoom(defaultZoom: number): void {
+    if (defaultZoom === this.defaultZoom) {
+      return;
+    }
+    this.defaultZoom = defaultZoom;
+    this.render();
+  }
+
   private render(): void {
     const configButtons = this.capabilities.configFile
       ? CONFIG_ACTIONS.map(
@@ -87,7 +101,7 @@ export class LmToolbar extends HTMLElement {
       <button type="button" data-action="print" ${this.hasDocument ? '' : 'disabled'}>Print</button>
       ${configButtons}
       <button type="button" data-action="zoom-out" ${this.zoom <= ZOOM_MIN ? 'disabled' : ''}>&minus;</button>
-      <button type="button" data-action="zoom-reset">${this.zoom}%</button>
+      <button type="button" data-action="zoom-reset">${this.defaultZoom}%</button>
       <button type="button" data-action="zoom-in" ${this.zoom >= ZOOM_MAX ? 'disabled' : ''}>+</button>
       <button type="button" data-action="about">About</button>
     `;

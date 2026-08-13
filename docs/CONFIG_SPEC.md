@@ -18,11 +18,14 @@ Linux: ~/.config/LightMark/config.json
   "mermaid":true,
   "mermaidTheme":"auto",
   "katex":true,
-  "printUseLightTheme":true
+  "printUseLightTheme":true,
+  "viewerMaxWidth":0
 }
 ```
 
 `mermaidTheme`: `"auto"`(기본값, `theme`을 보고 라이트/다크 자동 선택) | `"light"` | `"dark"`. `customCss`로 `theme`이 나타내는 것과 다른 배색으로 바꾼 경우 자동 선택이 틀릴 수 있어서, 이 값으로 mermaid 다이어그램의 라이트/다크를 `theme`과 무관하게 직접 지정할 수 있다.
+
+`viewerMaxWidth`: 뷰어 본문 최대 폭(px). 기본값 `0`은 "제한 없음" — 뷰어가 창 폭 전체를 그대로 채운다(word-wrap은 창 가장자리에서만 일어남). `0`보다 큰 값을 넣으면 본문이 그 폭으로 좁아지고 좌우 여백이 동일하게 가운데 정렬된다. on/off 스위치가 아니라 폭 값 자체를 사용자가 직접 정하는 방식(사용자 요청) — TOC Toggle/Zoom과 동일하게 이 값은 세션 시작 상태로만 쓰이고, 상태바의 입력창(파일명 오른쪽)으로 바꿔도 config.json에는 쓰지 않는다(`CLAUDE.md`의 "No graphical settings editor").
 
 ## Internal State (not user-editable, not part of this spec)
 

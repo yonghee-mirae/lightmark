@@ -11,8 +11,12 @@
 - **M3 (Theme Engine / Custom CSS / Font Loader)**: 완료. 아래 "M3 구현 상세" 참고.
 - **M4 (Mermaid / KaTeX / Shiki 지연 로딩)**: 완료. 아래 "M4 구현 상세" 참고.
 - **M5 (Rust 백엔드 + Dev 서버 + 어댑터)**: 완료. 아래 "M5 구현 상세" 참고.
-- **M6 (Tauri 통합)**: **완료, 전체 검증 완료**(+사용자 리포트로 버그 2건 수정: Open 버튼 데드락, Tauri drag&drop). 아래 "M6 구현 상세" 참고. Packaging/Release는 원래 M6에 있었으나 **M8로 분리**(사용자 요청 — 통합과 배포는 성격이 달라서, 배포는 맨 마지막 마일스톤으로). 사용자가 실제 Tauri 앱에서 직접 확인 완료: live reload, Config 4개 버튼(Config Folder/File 열기, Reload/Reset Config), Open 다이얼로그 마지막 위치 기억, CLI 인자로 파일 열기, single-instance 라우팅. **macOS 전환 세션에서 Print 버튼도 실기로 문제 발견/수정/재확인 완료**(아래 "macOS 전환 세션" 참고) — `RunEvent::Opened`(dock 드롭/파일 연결)는 여전히 미검증.
-- **M7 (TOC Toggle / Zoom / About)**: **전부 구현 완료.** TOC Toggle은 사용자가 실제 브라우저에서 클릭해 정상 동작 확인("toc toggle 버튼이 잘 동작하는 건 확인했어"). About은 사용자가 실제로 열어보며 버그(Close 버튼 제거 후 의도치 않은 outline)를 리포트/수정까지 마쳤고 그 뒤 이어서 다른 요청(버튼 라벨/Config File·Reset 삭제 등)으로 넘어감 — 즉 실사용 중이지만 최종 상태에 대한 별도의 "정상 동작" 재확인 문구는 없음. 이후 버튼 디자인 전면 개편, 라벨 한 단어화, Config File/Reset Config 기능 삭제(+Reload가 자기 치유), `Reload Config`→`Apply` 라벨, 툴바 높이 축소까지 전부 사용자가 최종 확인("좋아. 모두 좋아."/"ok. 모두 좋아."). **Zoom(macOS 전환 세션에서 구현)**: 디자인 확인(하이픈/`0`→마이너스 기호/`100%`로 교체) → 배치만 먼저 확인 → 실제 배선까지 단계적으로 사용자 확인받으며 진행, 세션 전용 상태(config.json에 안 씀)로 `-`/`100%`/`+` 3버튼 구현 완료. 아래 "M7 구현 상세"/"macOS 전환 세션 구현 상세" 참고.
+- **M6 (Tauri 통합)**: **완료, 전체 검증 완료**(+사용자 리포트로 버그 2건 수정: Open 버튼 데드락, Tauri drag&drop). 아래 "M6 구현 상세" 참고. Packaging/Release는 원래 M6에 있었으나 **M8로 분리**(사용자 요청 — 통합과 배포는 성격이 달라서, 배포는 맨 마지막 마일스톤으로). 사용자가 실제 Tauri 앱에서 직접 확인 완료: live reload, Config 4개 버튼(Config Folder/File 열기, Reload/Reset Config), Open 다이얼로그 마지막 위치 기억, CLI 인자로 파일 열기, single-instance 라우팅. **macOS 전환 세션에서 Print 버튼도 실기로 문제 발견/수정/재확인 완료**(아래 "macOS 전환 세션" 참고). `RunEvent::Opened`(dock 드롭/파일 연결)도 이후 사용자가 실기로 확인 완료 — M6은 이제 미확인 항목 전혀 없음.
+- **M7 (TOC Toggle / Zoom / About)**: **전부 구현 완료, 전부 사용자 실사용 확인 완료.** TOC Toggle/About은 각각 클릭/오픈해서 확인됨(About은 Close 버튼 제거 이후 최종 상태까지 재확인, "about 관련해서는 모두 확인했어"). 버튼 디자인 전면 개편, 라벨 한 단어화, Config File/Reset Config 기능 삭제(+Reload가 자기 치유), `Reload Config`→`Apply` 라벨, 툴바 높이 축소도 전부 확인됨("좋아. 모두 좋아."/"ok. 모두 좋아.").
+  - **Zoom**: 여러 차례 재설계를 거쳐 최종 정착 — (1) `font-size` 확대 대신 브라우저 실제 화면 줌과 같은 CSS `zoom` 속성으로 전환(하위 트리 전체가 한 번에 스케일), (2) 중앙 버튼이 하드코딩된 `100%`가 아니라 `defaultZoom`(config.json `zoom` 기반)을 표시/리셋, (3) Apply가 세션 중 조절한 zoom을 config 값으로 덮어쓰던 버그 수정(세션 zoom은 유지, `defaultZoom`만 config를 따라감). 그 과정에서 나온 task-list 체크박스 zoom 미반영 버그도 수정·확인됨. **최종 동작까지 사용자가 실기로 확인함**("1, 2, 3 모두 확인 완료했어" — 아래 뷰어 폭 제한/경고 상자와 함께).
+  - **뷰어 폭 제한(`viewerMaxWidth`)**: `.lm-markdown`의 `max-width`를 완전히 제거(기본은 뷰어 폭 전체 사용, 좌/우 `margin: 1rem`)하고, config 필드 `viewerMaxWidth`(number, px, 기본값 `0`=제한 없음)를 config.json에서만 편집, `lm-statusbar`(파일명 오른쪽)는 `Width: Full`/`Width: {값}px`로 읽기 전용 표시만 하는 방식으로 정착(중간에 고정 860px → `min(860px, 90vw)` → boolean 토글 → 입력창을 거쳐옴). 값을 바꾸면 그 px로 제한되고 좌우 auto margin으로 가운데 정렬(큰 값을 넣어도 여백이 0으로 찌그러지지 않도록 `calc(100% - 2rem)` 캡 처리됨). **사용자가 실기로 확인함.**
+  - **경고 상자 디자인 통일**: mermaid/KaTeX(inline+block)/image 렌더링 실패 시 뜨는 빨간 경고 상자가 서로 다른 padding을 쓰던 것을 mermaid 기준으로 통일. **사용자가 실기로 확인함.**
+  - 아래 "M7 구현 상세"/"macOS 전환 세션 구현 상세" 참고.
 - **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리), 미착수. macOS 전환으로 계획이 Linux 전제(AppImage/`patchelf`/`libfuse2t64`)에서 벗어남 — macOS는 `.app`/`.dmg` 타깃이라 착수 시 범위를 다시 잡아야 함. 릴리스 빌드 성능 실측(<1s, <30MB)도 미착수.
 - **macOS 전환 세션 (2026-08-12)**: 개발 환경을 Ubuntu에서 macOS로 이전. 빌드/테스트 자체는 시스템 패키지 설치 없이 전부 통과했지만, 그 과정에서 macOS 전용 버그 3건(watcher의 FSEvents 경로 불일치, Print 버튼의 Tauri ACL 권한 누락, 문서 끝 스크롤 시 트랙패드 러버밴드로 툴바/상태바가 밀림)을 발견/수정하고 사용자가 Print·러버밴드는 실기로 재확인함. 그 외 사용자 요청으로 config 자기 치유 범위 확장, 구현 안 된 채로 스키마에만 남아있던 config 필드 2개(`autoReload`, `breadcrumbVisible`) 삭제, 상태바 레이아웃 조정, Apply 버튼 no-op 최적화, viewer/TOC 가로 스크롤 방지(word-wrap)까지 진행. 아래 "macOS 전환 세션 구현 상세" 참고.
 
@@ -115,6 +119,13 @@
 - CSS는 테마 토큰과 무관하게 고정된 빨간 계열 색(`#d1242f`) — 경고는 라이트/다크 상관없이 똑같이 눈에 띄어야 함.
 - `samples/all-features.md`에 의도적으로 깨진 inline/block 수식 예제(`\notarealcommand{x}`)를 추가해서 이 경로도 같이 테스트 가능하게 해둠.
 
+### 버그 수정(사용자 리포트, M7 이후): mermaid/KaTeX/image 경고 상자 디자인이 서로 다름
+"latex, mermaid, image 등이 정상 렌더링되지 못할 때 표시되는 붉은색 상자 디자인이 달라. mermaid의 경우에는 상자 내 약간의 padding이 있는데, latex(inline과 full 모두), image는 padding이 없어. 모두 mermaid와 동일한 디자인으로 변경해줘." — `.lm-render-warning`(mermaid, 항상 독립된 `<p>`)은 `padding: 0.5rem 0.75rem`이 있었는데, `.lm-render-warning-inline`(KaTeX inline/block 수식, 깨진 이미지 - 전부 `<span>`, 일부는 본문 안에 중첩)은 `padding: 0 0.15em`으로 사실상 여백이 없었음 — 원래부터 두 클래스가 별개로 존재했던 이유(인라인 중첩 제약, M4 참고)와 무관하게 시각적 디자인 값 자체가 처음부터 달랐던 것.
+
+수정: `layout.css`에서 `padding`/`border`/`border-radius`/`background`/`color`/`font-size`를 `.lm-render-warning, .lm-render-warning-inline` 공유 셀렉터로 합침(둘 다 완전히 같은 값) — `margin`만 `.lm-render-warning` 전용으로 분리 유지(인라인 요소에는 상하 margin이 의미가 없어서 원래부터 있을 필요가 없었음). 엘리먼트 자체(어디는 `<p>`, 어디는 `<span>`)는 그대로 - 이건 인라인 중첩 안전성 때문이지 디자인과는 무관.
+
+검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과.
+
 ### 뒤늦게 발견/수정: 이미지 lazy loading이 어느 마일스톤에도 없었음
 `CLAUDE.md`의 "Images: Use lazy loading" 규칙이 M1~M4 어디에도 작업 항목으로 배정돼 있지 않아 빠져 있었음(사용자가 "존재하지 않는 이미지는 어떻게 보여?"라고 물어보다가 드러남 — 그때 보니 `<img>`에 `loading="lazy"`도 없고 `max-width` CSS도 없었음). 세 가지 같이 처리:
 - `core/markdown.ts`: `lm_image_attrs` core 룰 추가 — 모든 `image` 토큰에 `loading="lazy"` + `class="lm-image"` 부여(task list/heading id 룰과 같은 패턴, 렌더러를 새로 안 만들고 토큰에 속성만 얹음).
@@ -188,7 +199,7 @@ AppImage용 `patchelf`/`libfuse2t64`는 **설치 안 함** — 사용자가 패�
 - `watch_file`/`unwatch_file`: `HashMap<String, backend::FileWatcher>`를 **경로로 키잉**(`IPC_SPEC.md`가 이미 경로 기반 시그니처였고, LightMark는 문서 하나만 보므로 별도 id 불필요 — 같은 경로 재감시는 이전 `FileWatcher`가 drop되면서 자연히 정리됨).
 - `open_file`/`open_config_folder`/`open_config_file`: 유일하게 로직이 있는 예외 — `tauri-plugin-dialog`(네이티브 파일 선택)와 `tauri-plugin-opener`(폴더/파일을 OS 기본 앱으로 열기) 사용. `PLAN.md`가 이미 "dialog/opener 권한"이라고 명시해둔 부분이라 새 승인 없이 사용.
 - **`get_initial_path`(신규, IPC_SPEC.md의 9개 밖)**: Dev 모드의 `?file=` 쿼리 파라미터와 같은 역할 — CLI 인자/파일 연결로 실행된 경로를 프론트가 시작 시 1회 pull(레이스 회피). 두 번째 실행은 `tauri-plugin-single-instance`가 `open-path` 이벤트로 push(이미 실행 중이라 레이스 없음).
-- **macOS `RunEvent::Opened`(파일 연결/dock 드롭)는 구현했지만 미검증** — 이 세션은 Linux라 실제 macOS 컴파일/동작 확인 못 함(`#[cfg(target_os = "macos")]`로 감싸서 Linux/Windows 빌드엔 전혀 안 포함됨). macOS 릴리스 전 실기 확인 필수.
+- **macOS `RunEvent::Opened`(파일 연결/dock 드롭)**: 구현 당시(이 세션은 Linux)는 실기 확인 못 함(`#[cfg(target_os = "macos")]`로 감싸서 Linux/Windows 빌드엔 전혀 안 포함됨). **이후 사용자가 실기로 확인 완료**("3은 확인했어. 문제없어.") — 더 이상 미검증 항목 아님.
 
 ### 프론트엔드
 - **`platform/tauri.ts`(신규)**: `@tauri-apps/api`의 `invoke`/`listen`으로 `BackendApi` 구현. `capabilities: {watch:true, configFile:true}` — Tauri가 이 두 값이 모두 `true`인 첫 backend.
@@ -248,7 +259,7 @@ md 파일 위치 기준으로 resolve하는 게 의미상 맞지만(Web은 브�
 - **버전 소스**: IPC로 백엔드(Tauri/Cargo.toml)에 물어보지 않음 — Web/Dev/Tauri 세 모드 모두 동일한 값을 보여줘야 해서(`docs/PLAN.md` M7: "플랫폼 API에 기대지 않는"), 프론트엔드 자신의 `package.json`을 `tsconfig.json`이 이미 켜둔 `resolveJsonModule`로 직접 import(`core/appInfo.ts`). 앱 이름("LightMark")은 하드코딩 — `package.json`의 `name`은 `lightmark-frontend`(npm 패키지명)라 표시용 이름과 다름.
 - **`lm-toolbar`**: About 버튼의 `disabled` 제거, `data-action="about"` → `lm-about` 이벤트로 배선. Print/TOC Toggle과 달리 `hasDocument`로 게이트하지 않음 — 앱 정보 표시는 문서 유무와 무관.
 - **CSS**: `.lm-about-dialog`에 테마 변수(`--lm-color-bg/fg/border`)로 테두리/배경 적용. `@media print` 목록에 `lm-about`도 추가(다른 오버레이 엘리먼트와 동일하게 인쇄 시 숨김).
-- **검증**: `npm run lint && npm run typecheck && npm run build && npm run test` 전부 통과. 브라우저에서 About 버튼 클릭 시 모달이 뜨고 앱 이름/버전이 보이며, 배경 클릭/Escape로 닫히는 것 확인(Close 버튼은 이후 사용자 요청으로 제거 — 아래 참고). **사용자가 실제 앱에서 열어보고 버그(Close 제거 후 의도치 않은 outline)를 리포트** — 아래 참고. 그 수정 이후의 최종 상태에 대한 별도 "정상 동작" 재확인 문구는 없었지만, 그 뒤로도 About 관련 후속 요청(태그라인/개발자 표시 추가 등)이 계속 이어져서 실사용 중인 것으로 보임.
+- **검증**: `npm run lint && npm run typecheck && npm run build && npm run test` 전부 통과. 브라우저에서 About 버튼 클릭 시 모달이 뜨고 앱 이름/버전이 보이며, 배경 클릭/Escape로 닫히는 것 확인(Close 버튼은 이후 사용자 요청으로 제거 — 아래 참고). **사용자가 실제 앱에서 열어보고 버그(Close 제거 후 의도치 않은 outline)를 리포트** — 아래 참고. **그 수정(outline 제거 + 다이얼로그 어디를 클릭해도 닫힘) 이후의 최종 상태도 이후 세션에서 사용자가 재확인함**("about 관련해서는 모두 확인했어") — About은 더 이상 미확인 항목 없음.
 - **개선(사용자 요청): 이름과 버전 사이에 한 줄 설명 추가.** `core/appInfo.ts`에 `APP_TAGLINE = 'Fast, lightweight, focused Markdown viewer.'` 추가, `lm-about`에서 이름(`h2`)과 버전 사이에 `<p class="lm-about-tagline">`로 표시(`--lm-color-muted`로 톤 다운).
 - **개선(사용자 요청): 개발자 표시 추가.** `core/appInfo.ts`에 `APP_AUTHOR = 'Yonghee Yu'` 추가(하드코딩 — `package.json`에 `author` 필드가 없고, `APP_NAME`도 같은 방식으로 이미 하드코딩돼 있어서 일관됨), 버전 아래에 "Developed by {APP_AUTHOR}"로 표시.
 - **개선(사용자 요청): 버튼 디자인 전면 개편.** 툴바/About 다이얼로그 버튼이 지금까지 브라우저 기본 스타일 그대로였음("디자인이 너무 별로"라는 리포트). `layout.css`에 `lm-toolbar button, .lm-about-dialog button` 공유 셀렉터로 하나의 flat 스타일 추가 — 테두리 없음, `border-radius: 6px`, hover 시 `--lm-color-border` 배경, `focus-visible` 아웃라인, `disabled` 시 `opacity: 0.4`. TOC Toggle의 `aria-pressed="true"`(눌린 상태)는 accent 배경 + 흰 글자로 별도 강조. `lm-toolbar`도 `display: flex` + `gap: 0.4rem`으로 정돈. 아이콘·그림자는 추가 안 함(`CLAUDE.md`의 "Fast. Lightweight. Focused." 정체성에 맞춰 최대한 단순하게) — 컴포넌트 TS 템플릿은 전혀 안 건드리고 CSS만으로 처리.
@@ -267,6 +278,47 @@ md 파일 위치 기준으로 resolve하는 게 의미상 맞지만(Web은 브�
    - `lm-statusbar.ts`: 하드코딩됐던 "100%"를 `setZoom()`으로 실제 값 반영.
    - `main.ts`: `zoom`을 `tocVisible`과 동일한 패턴의 세션 전용 상태로 소유. `readConfig()` 완료 시 `config.zoom`으로 초기화. `lm-zoom-out`/`lm-zoom-reset`/`lm-zoom-in` 이벤트 → 클램프 → `applyTheme({ ...currentConfig, zoom })`로 `--lm-zoom` CSS 변수만 재적용(문서 재렌더 없음, Apply 버튼과 달리 mermaid/shiki 등을 다시 굽는 게 아니라 순수 CSS 변수 갱신이라 더 가벼움) + 툴바/상태바 갱신.
    - 검증: `npm run lint && npx tsc --noEmit && npm run build && npm run test`(30개) 전부 통과. 화면 캡처 검증은 하지 않음(위 방침대로).
+4. **개선(사용자 요청): 중앙 버튼 라벨을 항상 `100%`로 고정.** "zoom 상태는 상태바에 있으니, 메뉴바의 100% 버튼 라벨은 항상 100%로 유지해줘 — 100%로 돌아간다는 의미를 명확히 하려는 조치." `lm-toolbar.ts`의 중앙 버튼이 `${this.zoom}%`(현재 배율)를 렌더하던 걸 `${ZOOM_RESET}%`(고정값)로 변경 — 실제 배율은 이미 `lm-statusbar`가 보여주므로, 이 버튼은 그 자리에서 "누르면 리셋된다"는 의미만 전달. `setZoom()`은 그대로 유지(`−`/`+`의 경계 disabled 판정에 여전히 필요).
+5. **버그 수정(사용자 리포트, 2단계): zoom을 조절해도 task-list 체크박스 크기는 그대로.**
+   - **1차 시도 — 불충분**: task-list 체크박스(`core/markdown.ts`가 만드는 평범한 `<input type="checkbox">`)는 브라우저 UA 스타일시트가 크기를 고정 px로 지정해서 `.lm-markdown`의 (줌에 따라 커지는) font-size와 무관하다고 보고, `layout.css`에 `.lm-markdown input[type='checkbox'] { width: 1em; height: 1em; vertical-align: middle; }`를 추가. 사용자가 "사이즈가 바뀌지 않아. 그대로야."로 재리포트.
+   - **원인 재확인**: 진짜 원인은 좀 더 구체적이었음 — 폼 컨트롤(`input`/`button`/`select`/`textarea`)은 페이지 font-size를 상속하지 않고 UA 스타일시트가 주는 자체 control font-size를 쓰는 게 기본 동작이라, 방금 추가한 `1em`도 `.lm-markdown`의 줌 반영 font-size가 아니라 그 고정된 control font-size 기준으로 계산되어 여전히 줌과 무관했음.
+   - **2차 시도 — 확정**: 같은 규칙에 `font-size: inherit`을 먼저 추가해 `.lm-markdown`의 (이미 줌 반영된) font-size를 체크박스에 끌어온 뒤, 그 값을 기준으로 `1em` width/height가 스케일되도록 수정. `docs/PLAN.md`의 M7 Zoom 절도 같이 갱신.
+   - 검증: `npm run lint && npm run typecheck && npm run build && npm run test`(30개) 전부 통과. **사용자가 실제 앱에서 재확인**("체크박스 크기 확인했어. 잘 돼.").
+6. **재설계(사용자 요청): 줌 방식을 font-size 확대 → CSS `zoom` 기반으로, `max-width`도 고정값 → 창 폭 연동으로.** 체크박스 버그를 고친 직후 사용자가 방향을 재검토: "글자 크기나 각 컴포넌트의 크기를 조절하는 것보다는 브라우저의 zoom 기능처럼 그냥 화면 확대/축소로 하는 게 좋겠어. markdown 영역의 max-width도 창크기와 연동하고." 이전 방식(`font-size: calc(1rem * var(--lm-zoom))`)의 근본 문제: 텍스트만 커지고 나머지 요소(체크박스가 그랬듯 이미지/표 등도 잠재적으로)는 컴포넌트별로 따로 스케일을 맞춰줘야 하는 구조였음.
+   - `layout.css`의 `.lm-markdown`에서 `font-size: calc(...)`를 `zoom: var(--lm-zoom)`으로 교체 — 브라우저 자체 페이지 줌과 동일한 속성이라 텍스트/이미지/표 테두리/체크박스/여백 등 하위 트리 전체가 한 번에 비례 확대/축소됨. 방금 추가했던 `.lm-markdown input[type='checkbox']`(`font-size: inherit`/`width`/`height`) 오버라이드는 불필요해져 삭제(체크박스도 다른 요소와 마찬가지로 `zoom`으로 자동 스케일).
+   - `max-width: 860px`(고정값)을 `max-width: min(860px, 90vw)`로 교체 — 창 폭에 비례해 좁아지되(요청한 "창크기와 연동"), 아주 넓은 창에서는 860px을 넘지 않아 한 줄이 과도하게 길어지지 않음(원래 가독성 컬럼 폭 취지 유지). TOC가 보이는 상태에서도 컨테이너보다 넓어질 수 없어(블록 auto 폭의 기본 제약) 별도 분기 불필요.
+   - `--lm-zoom`(config.zoom/100 비율) 자체는 안 바뀜 — `theme.ts`/`theme.test.ts` 그대로, CSS에서 소비하는 방식만 바뀜.
+   - 검증: `npm run lint && npm run typecheck && npm run build && npm run test`(30개) 전부 통과. `docs/PLAN.md`의 M7 Zoom 절도 같이 갱신.
+7. **재조정(사용자 요청): 위 `min(860px, 90vw)`는 의도한 "창 폭 연동"이 아니었음 — 뷰어는 기본으로 표시 가능한 최대 폭을 쓰고, 폭 제한은 사용자가 켤 수 있는 설정으로.** "viewer 영역의 크기를 창 크기에 연동하라는 건 적용되지 않았네. word-wrap 하지 말고 그냥 표시할 수 있는 최대로 하라는 의미였어. 단, 사용자 설정을 추가해서 width를 제한할 수 있도록 해주고, 이 설정은 상태바 파일명 오른쪽에 추가해줘."
+   - **Config 필드 신설: `limitViewerWidth`(boolean, 기본값 `false`)** — `frontend/src/types/config.ts`(+`config.test.ts`)/`backend/src/config.rs`/`docs/CONFIG_SPEC.md` 세 곳 동시 반영. TOC Toggle/Zoom과 동일한 세션 전용 상태 패턴 — 토글은 config.json에 안 씀.
+   - **`layout.css`**: `.lm-markdown`의 `max-width`를 완전히 제거(기본은 뷰어 패널 실제 폭을 그대로 채움, word-wrap은 그 실제 가장자리에서만 발생). 이전의 `min(860px, 90vw)`는 `.lm-content.lm-width-limited .lm-markdown` 규칙으로 옮겨서, 새 토글이 켜졌을 때만 적용(TOC Toggle이 `.lm-content.lm-toc-hidden`을 쓰는 것과 같은 패턴) — 즉 "창 폭에 비례하는 캡"이라는 이전 아이디어 자체는 버리지 않고, 사용자가 선택할 수 있는 옵션으로 격하됨.
+   - **상태바가 처음으로 인터랙티브 컨트롤을 가짐**: 지금까지 `lm-statusbar`는 순수 표시 전용이었는데(클릭 가능한 건 전부 `lm-toolbar`), 사용자가 위치를 "상태바 파일명 오른쪽"으로 명시해서 여기 처음 버튼이 생김. `lm-toolbar`의 클릭 관용구(클릭 시 `blur()` 후 커스텀 이벤트 dispatch, `aria-pressed`로 on/off 표시)를 그대로 재사용 — 라벨 `Width`(한 단어, on일 때 accent 배경, TOC 버튼과 같은 시각 언어). `main.ts`가 `widthLimited` 세션 상태 소유, `lm-width-toggle` 이벤트로 토글 → `.lm-content` 클래스 + `statusbar.setWidthLimited()`.
+   - 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) + 백엔드(`cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`, 13개) 전부 통과. `docs/PLAN.md`/`docs/CONFIG_SPEC.md`/`docs/UI_SPEC.md` 같이 갱신.
+8. **재조정(사용자 요청): 폭 제한을 on/off 스위치가 아니라 값을 직접 입력하는 방식으로, 렌더링된 컨텐츠의 좌/우 여백도 상태에 따라 다르게.** "설정으로 width를 제한하는 건 true/false switch가 아니라 직접 값을 입력할 수 있도록 변경해줘. 그리고 렌더링된 컨텐츠는, width를 제한하지 않았을 때는 좌/우 여백을 좀 더 추가해주고, 제한했을 때는 좌/우 여백을 동일하게 설정해 가운데 위치하게 해줘."
+   - **Config 필드 교체: `limitViewerWidth`(boolean) → `viewerMaxWidth`(number, px, 기본값 `0` = 제한 없음)** — `frontend/src/types/config.ts`(+`config.test.ts`)/`backend/src/config.rs`/`docs/CONFIG_SPEC.md` 세 곳 동시 반영.
+   - **`lm-statusbar`의 토글 버튼을 숫자 입력창으로 교체**: `<input type="number" min="0" step="10" placeholder="Full">`(위치는 그대로 파일명 오른쪽) — 비우면(또는 `0`) 제한 없음, 값을 입력하면 그 px로 제한. `change`에서만 반응(blur/Enter 커밋, `input`처럼 매 키 입력마다 반응 안 함 - 타이핑 중간값으로 매번 재배치할 이유가 없음). 새 `WidthChangeDetail` export 타입으로 `lm-width-change` 이벤트 detail을 실어보냄(다른 컴포넌트의 `*Detail` 관용구와 동일).
+   - **`layout.css`**: `.lm-markdown` 기본 상태에 `margin: 0 2rem` 추가(제한 없을 때 좌/우 여백을 좀 더 - 요청 그대로). `.lm-content.lm-width-limited .lm-markdown`은 `max-width: var(--lm-viewer-max-width)`(main.ts가 `${viewerMaxWidth}px`로 세팅) + `margin-left/right: auto`(좌우 여백이 같아져 가운데 정렬 - 요청 문구 그대로 구현). 더 이상 `min(860px, 90vw)` 같은 자체 계산값 없음 — 폭은 전적으로 사용자가 입력한 값.
+   - 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) + 백엔드(`cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`, 13개) 전부 통과. `docs/PLAN.md`/`docs/CONFIG_SPEC.md` 같이 갱신.
+9. **재조정(사용자 요청): `lm-statusbar`의 숫자 입력창을 읽기 전용 표시로 되돌림.** "상태바에 width 표현이 마음에 안 들어. 여기서 변경하지는 않을거야. 그냥 현재 config 파일에 설정된 값이 뭔지 표시만 하면 돼. 상태바에 표시되는 다른 컨텐츠들과의 수직 정렬에 신경써서 변경해줘. 0이 설정된 경우는 Full로 표시하는 거 좋아." 짐작되는 원인: `<input type="number">`가 filename/zoom 같은 평범한 텍스트 `<span>`들 사이에서 브라우저 기본 폼 컨트롤 테두리/패딩 때문에 높이가 달라 보여 수직 정렬이 어긋났던 것으로 보임(사용자가 정확한 원인을 짚어준 건 아니고, 입력창 자체를 없애는 방향으로 해결됐음) — 평범한 `<span>`으로 바꾸면 그 문제 자체가 구조적으로 사라짐.
+   - `lm-statusbar`에서 `<input>`/`change` 리스너/`lm-width-change` 이벤트/`WidthChangeDetail` 타입 전부 제거, `<span class="lm-status-width">`로 교체 — filename/zoom과 동일한 패턴(`setViewerMaxWidth()`가 값만 반영, 값 > 0이면 `${width}px`, 아니면 `Full`).
+   - `main.ts`: 더 이상 세션 중 바꿀 방법이 없으므로 별도 `viewerMaxWidth` 변수 없이 `currentConfig.viewerMaxWidth`를 직접 읽도록 단순화. Apply(`lm-reload-config`) 핸들러에도 `updateWidthDisplay()` 호출 추가 — config.json에서 값을 바꾸고 Apply를 누르면 상태바 표시와 실제 레이아웃(`--lm-viewer-max-width`) 둘 다 재시작 없이 갱신됨. 이제 `viewerMaxWidth`는 `tocVisible`/`zoom`과 달리 세션 중 오버라이드가 없는, config.json을 그대로 반영하기만 하는 필드가 됨(오히려 `CLAUDE.md`의 "No graphical settings editor"에 더 가까워짐).
+   - `layout.css`: 입력창 전용 스타일(`.lm-status-width`/`.lm-status-width-input`) 삭제 — 평범한 `<span>`이라 filename/zoom처럼 별도 스타일 불필요.
+   - 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과. 백엔드는 이번 변경에서 안 건드림(기존 `cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`, 13개로 재확인만). `docs/PLAN.md` 같이 갱신.
+10. **개선(사용자 요청): 폭 표시에 라벨 추가.** "상태바에 그냥 값만 표시되니까 무슨 의미인지 잘 모르겠어. \"Width: 값\" 이런 식으로 표시해줘." zoom은 `100%`처럼 단위만으로 의미가 통하지만, 폭은 `700px`/`Full`만으로는 무엇의 값인지 알 수 없다는 지적 — `updateWidth()`가 `Width: ${value}`로 라벨을 붙이도록 수정(`Width: Full` / `Width: 700px`). 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과.
+11. **버그 수정(사용자 리포트): `viewerMaxWidth`에 아주 큰 값을 넣으면 좌/우 여백이 줄어듦.** 큰 값/음수 처리를 물어보는 과정에서, "그대로 둬도 괜찮아. 큰 값을 입력했을 경우에 가로 스크롤이 생기거나 하는 문제가 발생하지는 않는데, 좌우 여백이 줄어드는 문제는 있어. 검토해줘."로 별개 버그 리포트. 원인: `.lm-content.lm-width-limited .lm-markdown`의 `margin-left/right: auto` — 값이 컨테이너 폭에 도달/초과하면 `max-width`가 사실상 컨테이너 폭 그대로를 차지하게 되고(가로 스크롤이 안 생기는 이유 - `max-width`는 컨테이너보다 넓게 만들 수 없음), 그러면 auto margin이 나눠 가질 여유 공간이 없어져서 좌우 여백이 0으로 줄어듦(제한 없음 상태의 기본 `2rem`보다 좁아짐).
+    - 수정: `max-width: min(var(--lm-viewer-max-width), calc(100% - 4rem))` — 입력값이 아무리 커도 "컨테이너 폭 - 4rem"을 넘지 못하게 캡을 하나 더 씌워서, auto margin이 항상 최소 `2rem`씩(제한 없음 상태와 동일)은 나눠 가질 여유가 남도록 함. 컨테이너 폭에 아주 가까운(넘지는 않는) 값을 넣었을 때도 같은 이유로 여백이 찌그러지지 않음.
+    - 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과.
+12. **개선(사용자 요청): 좌/우 여백을 2rem → 1rem으로 축소.** "지금 설정을 width를 지정 여부와 관계없이 좌우 여백을 각각 2rem씩 확보한거지? 1rem으로 줄여봐줘." 확인된 그대로였음(제한 없음 상태의 `.lm-markdown` 기본 margin, 제한 상태의 `min(..., calc(100% - Nrem))` 캡 둘 다 `2rem` 기준) — 두 곳 다 `1rem`으로 축소(캡의 `calc(100% - 4rem)`도 `calc(100% - 2rem)`으로 같이 축소, "여백의 2배"라는 관계 유지). 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과.
+13. **버그 수정(사용자 리포트): 메뉴바 zoom 리셋 버튼의 `100%`가 config.json의 `zoom`이 아니라 하드코딩된 값이었음.** "zoom 관련 문제가 있어. 설정 파일에 있는 zoom이 이 앱의 기본 zoom 레벨이야. 따라서 메뉴바의 100%도 고정이 아니라 이 값에 따라 적용돼야 해." — 앞서 "라벨을 항상 100%로 고정"으로 만들었던 결정(위 3번 참고)이 틀렸던 것으로 정정: `100%`는 임의의 고정값이 아니라 `config.zoom`의 기본값(우연히 `100`)이었을 뿐이고, `config.zoom`이 다른 값이면 리셋 버튼도 그 값을 목표로 해야 정확함.
+    - `lm-toolbar.ts`: `ZOOM_RESET`(고정 상수) 대신 새 세션 상태 `defaultZoom`(+`setDefaultZoom()`)을 렌더에 사용 — 중앙 버튼 라벨이 `${this.defaultZoom}%`로 바뀜. `-`/`+`의 경계 판정(`this.zoom` 기준)은 안 건드림.
+    - `main.ts`: `defaultZoom`을 `zoom`과 같은 패턴(세션 상태, `readConfig()` 완료 시 `config.zoom`으로 초기화)으로 신설. `lm-zoom-reset` 핸들러가 하드코딩된 `ZOOM_RESET` 대신 `defaultZoom`으로 리셋(`ZOOM_RESET`은 `lm-toolbar.ts` 내부 초기값 fallback으로만 남고 main.ts의 import에서는 더 이상 안 씀 - orphan 정리).
+    - **부수 발견 및 수정: Apply(Reload Config)가 `--lm-zoom`은 `applyTheme(config)`로 바로 바꾸면서 세션 `zoom`/`defaultZoom` 상태와 그 UI 표시(툴바/상태바)는 갱신을 안 하고 있었음.** config.json에서 zoom을 바꾸고 Apply를 누르면 실제 렌더링은 새 zoom으로 바뀌는데 툴바 `-`/`+`/리셋과 상태바 zoom 표시는 그 전 값을 그대로 보여주는 불일치가 있었음 — `defaultZoom`을 config.zoom과 동기화하는 코드를 만들면서 같은 값을 읽는 이 경로도 같이 점검하다가 발견함(사용자가 직접 지적한 건 아님). Apply 핸들러에 `zoom = config.zoom; toolbar.setZoom(zoom); statusbar.setZoom(zoom); defaultZoom = config.zoom; toolbar.setDefaultZoom(defaultZoom);` 추가해서 실제 렌더링과 표시가 항상 같은 값을 가리키도록 함.
+    - 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과.
+14. **버그 수정(사용자 리포트): 문서를 연 상태에서 zoom을 세션 중 바꾼 뒤 config를 고쳐 Apply를 누르면 zoom이 기본값으로 리셋됨.** "문서를 읽은 상태에서 zoom level을 변경하고, 이후 config 파일을 변경해 apply를 누르면, 기본 zoom level로 reset돼. 이 기능을 제외해줘. 사용자가 변경한 zoom level은 유지되도록." — 바로 위(13번) "Apply 시 zoom 동기화" 수정이 원인이었음: config에 다른 필드(테마 등)만 바꾸고 Apply를 눌러도 `zoom`을 무조건 `config.zoom`으로 되돌리고 있었던 것 — 세션 중 수동으로 조절한 zoom까지 함께 덮어써버림.
+    - 수정: Apply 핸들러에서 `zoom = config.zoom; toolbar.setZoom(zoom); statusbar.setZoom(zoom);` 세 줄 제거. `applyTheme(config)`도 `applyTheme({ ...config, zoom })`으로 바꿔서 세션 zoom을 그대로 유지한 채(`--lm-zoom`을 안 건드림) 나머지 필드만 적용. `defaultZoom`(리셋 버튼이 가리키는 목표값)만 계속 `config.zoom`으로 갱신 — "리셋하면 어디로 가는지"는 최신 config를 따르되, "지금 보이는 배율"은 세션 중 조절한 값 그대로.
+    - 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과.
+
+**최종 확인(사용자)**: 위 zoom 재설계(1~14번, CSS `zoom` 전환/`defaultZoom`/Apply 세션 보존)·뷰어 폭 제한(`viewerMaxWidth`, 상태바 표시, 여백 로직)·mermaid/KaTeX/image 경고 상자 디자인 통일 세 가지 모두 실제 앱에서 확인 완료("1, 2, 3 모두 확인 완료했어"). **M7에 더 이상 미확인 항목 없음.**
 
 ## 버튼 라벨 축약 + Config File/Reset Config 기능 삭제 (신규)
 - **개선(사용자 요청): 버튼 라벨을 한 단어로.** "화면 폭이 좁을 수 있어서 버튼은 한 단어로 표시하고 싶어" — `TOC Toggle`→`TOC`, `Config Folder`→`Config`, `Reset Config`→`Reset`. `Reload Config`는 그대로 유지 — "Reload"만 쓰면 md 파일 재로딩(자동 live reload)과 config 재로딩이 헷갈릴 수 있다고 사용자가 지적, 좋은 한 단어를 아직 못 찾아서 사용자가 더 생각해보기로 함(제안했던 대안: Resync/Reconfig — 아직 미확정).
@@ -381,8 +433,33 @@ M6에서 `tauri-plugin-single-instance`로 "두 번째 실행/다른 .md 파일 
 - macOS "Open With LightMark"로 여러 파일을 한꺼번에 선택했을 때 파일당 창 하나씩 여는 것까지 이번에 같이 고칠지(지금은 `urls.first()`만 처리 — 어차피 건드리는 코드 바로 옆이라 곁들이기 좋음).
 - `config.json`/`state.json` 동시 접근 방지(예: 프로세스 내 `Mutex`)를 이번 범위에 넣을지, 별도로 미룰지.
 
+## 인쇄 시 컨텐츠 잘림 방지 (신규)
+
+**버그 수정(사용자 리포트): 인쇄 시 페이지가 넘어가는 지점에서 컨텐츠가 중간에 잘림.** "인쇄할 때 페이지가 넘어가는 부분에서 일부 컨텐츠가 중간에 걸려 잘리는 문제가 있어." 기존에는 `@media print`에 `.lm-markdown pre`(코드블록)만 `break-inside: avoid`가 있었고, 다른 블록 요소들은 브라우저가 페이지 경계에서 그냥 반으로 잘라 다음 페이지로 이어붙였음.
+
+수정: `layout.css`의 `@media print`에서
+- `.lm-markdown pre`/`img`/`blockquote`/`li`/`tr`, `.lm-mermaid`(다이어그램), `.lm-math-block`(KaTeX 블록 수식)를 한 셀렉터로 묶어 전부 `break-inside: avoid`(+legacy `page-break-inside: avoid`) — 이 "원자적" 블록들은 남은 공간에 안 들어가면 통째로 다음 페이지로 넘어감(페이지 하단에 약간의 빈 공간이 생길 수 있지만, 잘리는 것보다 나음). 기존에 코드블록 전용으로 있던 규칙을 이 목록에 합쳐서 정리(중복 규칙 제거).
+- `h1`~`h6`에 `break-after: avoid`(+`page-break-after: avoid`) 추가 — 헤딩만 페이지 맨 아래 홀로 남고 본문은 다음 페이지로 넘어가 버려서 헤딩과 내용이 분리돼 보이는 걸 방지(내용과 "붙어서" 페이지가 넘어가도록).
+
+검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과.
+
+**후속 리포트(사용자): "일반 텍스트나 수식이 잘리는 경우도 있어. 결국 모든 컨텐츠가 잘릴 수 있다는 거 아닐까?"** — 정확한 지적이었음. 일반 단락 텍스트나 인라인 수식(`.lm-math`, block 아닌 쪽)은 애초에 `break-inside: avoid`를 걸어줄 특정 요소가 마땅치 않아서, 요소 하나하나를 쫓아가는 위 방식은 근본적으로 한계가 있었음.
+
+**원인으로 판단했으나 틀렸음, 되돌림**: `.lm-markdown { zoom: var(--lm-zoom); }`(M7의 CSS `zoom`)이 인쇄 시에도 그대로 적용돼 페이지 분할 계산을 흐트러뜨리는 게 근본 원인이라고 보고 `@media print`에 `.lm-markdown { zoom: 1; }`을 추가했었음. **사용자가 바로 정정**: "아냐. 이 문제가 아냐. 화면 zoom level에 따라 인쇄 크기도 달라지는 건 마음에 드는 기능이었어. 이건 원복해. 문제는 첨부처럼 페이지가 나뉘면서 하나의 컨텐츠가 위 아래로 잘리는 현상이야." — zoom이 인쇄 크기에 그대로 반영되는 건 의도된, 선호하는 동작이었고 이 버그의 원인이 아니었음. `.lm-markdown { zoom: 1; }`을 삭제해 원복(1차 수정의 요소별 `break-inside`/`break-after` 규칙은 그대로 유지).
+
+검증(zoom 원복 후): 프론트(`lint`/`typecheck`/`build`/`test`, 30개) 전부 통과.
+
+**진단(직접 재현): WebKitGTK가 `break-inside`/`page-break-inside: avoid`를 사실상 전혀 지키지 않는다.** 사용자가 보내려던 스크린샷을 이 세션에서는 못 받았지만("ㄱ" 모양 ASCII 그림으로 대신 설명 — 박스 모서리 도형이 페이지 경계에서 위/아래로 잘리는 모습), 실제 앱과 동일한 WebKitGTK 4.1(Ubuntu 24.04 번들 버전, 2.52.3)로 직접 재현해서 확인함.
+
+- **재현 방법**: `npm run dev`(Vite) + `python3` + PyGObject(`WebKit2` 4.1)로 실제 `WebKitWebView`를 띄우고 `samples/all-features.md`를 `lm-file-drop` 이벤트로 주입, `WebKitPrintOperation`(GTK의 "Print to File" 백엔드로 PDF 직접 export)으로 인쇄 → `pdftoppm`으로 PNG 변환해서 페이지별로 직접 확인(Chromium 헤드리스로도 같은 문서를 확인했으나, 폰트 메트릭 차이로 페이지 나뉘는 위치 자체가 달라져서 이 버그가 우연히 재현 안 됨 — 실제 버그 검증에는 WebKitGTK 쪽 결과가 유효함).
+- **확인된 사실**: `.lm-math-block`(KaTeX 블록 수식, `break-inside: avoid` 있음)이 페이지 2→3 경계에서 정확히 반으로 잘림(시그마 기호와 분수가 위/아래로 분리) — 사용자가 그린 "ㄱ" 그림과 정확히 일치하는 현상. `.lm-math-block`뿐 아니라 그 안의 KaTeX 자체 래퍼(`.katex-display`, `.katex`)에도 동일하게 `break-inside: avoid`를 중복 선언해봤지만 효과 없음. `.lm-math-block`을 `display: table`로 바꿔도 효과 없음(둘 다 실험 후 되돌림, 코드에는 안 남음).
+- **결정적 확인**: 원래 있던 문서에 필러 문단을 끼워 넣어 코드블록(`.lm-markdown pre`, `break-inside: avoid` 있음)과 mermaid 다이어그램(`.lm-mermaid`, `break-inside: avoid` 있음)이 페이지 경계에 걸리도록 강제로 재배치했더니, **이것들도 똑같이 위/아래로 잘림**. 즉 원래 문서에서 mermaid/표/blockquote가 안 잘렸던 건 `break-inside: avoid`가 작동해서가 아니라, 우연히 페이지 경계에 걸리지 않았을 뿐이었음.
+- **결론 및 사용자 결정(받아들이고 넘어가기): 이 WebKitGTK 버전은 `break-inside`/`page-break-inside`(레거시 포함)를 사실상 존중하지 않는다** — 요소 종류나 CSS 값을 아무리 바꿔도 CSS만으로는 고칠 수 없는, 엔진 자체의 인쇄 페이지네이션 한계로 보임(비-Mac WebKit 포트의 인쇄 지원이 Blink/Gecko보다 약하다는 건 알려진 문제 범주). 진짜 고치려면 JS로 각 "보호 대상" 요소의 위치를 계산해서 페이지 경계에 걸릴 것 같으면 그 앞에 강제로 여백을 넣어 다음 페이지로 밀어내는 수동 페이지네이션(자체 구현 또는 Paged.js 같은 라이브러리)이 필요한데, 세 가지 선택지(직접 JS 구현/Paged.js 도입/한계로 받아들이기)를 제시한 결과 **"알려진 한계로 받아들이고 넘어가기"로 확정** — 추가 코드 변경 없음.
+- 기존 요소별 `break-inside`/`break-after` 규칙(1차 시도)은 그대로 코드에 남아있음 — 이 WebKitGTK 버전에서는 효과가 없는 것으로 확인됐지만, 다른 엔진(Chromium 등, 실제로 페이지 경계에 걸리는 경우)이나 향후 WebKitGTK 버전 업데이트에서는 여전히 유효할 수 있어 해로울 게 없어 제거하지 않음.
+
 ## 다음에 할 일 (사용자 지정 대기)
+- **인쇄 시 컨텐츠 잘림 버그 — 종결(알려진 한계로 받아들임)**: 위 "인쇄 시 컨텐츠 잘림 방지" 섹션 참고. WebKitGTK가 `break-inside`를 사실상 지원 안 하는 게 확인된 근본 원인이고 CSS로는 못 고침 — JS 기반 수동 페이지네이션 직접 구현/Paged.js 도입/한계로 받아들이기 세 선택지 중 사용자가 **"한계로 받아들이고 넘어가기"**를 선택해서 이 항목은 더 이상 진행하지 않음. 요소별 `break-inside`/`break-after` 규칙(1차 시도)은 무해하므로 코드에 그대로 남아있음.
 - **멀티 윈도우/인스턴스 지원**: 조사만 끝남, 설계/구현 미착수(바로 위 섹션 참고). 재개 시 "다시 시작할 때 먼저 사용자에게 물어야 할 것" 목록부터.
-- **`RunEvent::Opened`(macOS dock 드롭/파일 연결) 실기 검증 미착수**: M6에서 구현은 됐지만 그때는 Linux 환경이라 확인 못 했던 항목. 이번 macOS 세션에서 검증할 기회가 있었지만 멀티 윈도우 필요성이 먼저 드러나서 순서가 밀림 — **다음 세션이 다시 Ubuntu라 여전히 검증 불가능**, macOS로 돌아왔을 때(멀티 윈도우 설계가 이 코드 경로를 바꿀 가능성이 높으니 그 설계가 먼저 정해진 뒤가 나음) 마무리.
+- **`RunEvent::Opened`(macOS dock 드롭/파일 연결)**: **사용자가 실기로 확인 완료**("3은 확인했어. 문제없어.") — 더 이상 대기 항목 아님.
 - **M8(신규, 아직 미착수, M6에서 분리) — 다시 Ubuntu 기준으로 되돌림**: macOS 전환 중엔 "AppImage 계획이 Linux 전제라 못 씀"이었지만, 다음 세션이 다시 Ubuntu이므로 원래 계획(`patchelf`/`libfuse2t64` 설치 후 `npm run tauri build`로 AppImage 등 패키징)이 다시 유효함 — macOS `.app`/`.dmg` 타깃 대응은 다음에 macOS로 돌아왔을 때 별도로. 릴리스 빌드로 시작 시간/메모리 실측(<1s, <30MB, `CLAUDE.md` 목표)도 미착수.
-- 멀티 윈도우/인스턴스 지원, `RunEvent::Opened` 검증(macOS 전용, Ubuntu에서는 불가), M8 중 어느 걸 먼저 할지는 아직 사용자 지정 안 됨. M7(TOC Toggle/Zoom/About)은 이번 세션에서 전부 완료됨.
+- 남은 건 **멀티 윈도우/인스턴스 지원**과 **M8(패키징)** 둘 중 어느 걸 먼저 할지 — 아직 사용자 지정 안 됨. M7(TOC Toggle/Zoom/About), 인쇄 잘림 버그, `RunEvent::Opened`는 전부 종결됨.

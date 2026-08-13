@@ -111,6 +111,26 @@ lm-statusbar .lm-status-zoom {
   display: none;
 }
 
+/* config.json's viewerMaxWidth (lm-statusbar, next to the filename, shows the current value read-
+   only - user feedback) - unlimited by default (.lm-markdown fills the full viewer width, see
+   below). A value > 0 adds this class, and --lm-viewer-max-width (set by main.ts on this element)
+   caps the reading column at that many px, centered via the equal auto margins below (user
+   feedback: "제한했을 때는 좌/우 여백을 동일하게 설정해 가운데 위치"). A block's max-width can't
+   force it wider than its own containing block, so this is safe regardless of the TOC column's
+   width too.
+   `min(..., calc(100% - 2rem))` caps the value at "container minus the unlimited state's own 1rem
+   each side" - without this, an entered value at or beyond the container's width would hit that
+   ceiling on its own (max-width can't force it wider) and, with no room left for the auto margins
+   below to fill, they'd collapse to 0 - flush against the edges instead of keeping the same
+   breathing room the unlimited state has (user report: "좌우 여백이 줄어드는 문제"). This also
+   means a merely large-but-still-within-container value is floored the same way right at the
+   edge, not just an extreme/overflowing one. */
+.lm-content.lm-width-limited .lm-markdown {
+  max-width: min(var(--lm-viewer-max-width), calc(100% - 2rem));
+  margin-left: auto;
+  margin-right: auto;
+}
+
 lm-toc {
   display: block;
   border-right: 1px solid var(--lm-color-border);
@@ -254,10 +274,24 @@ lm-toc a.active {
 
 /* Rendered markdown */
 .lm-markdown {
-  max-width: 860px;
+  /* No max-width by default - fills whatever width the viewer pane actually has (user feedback:
+     a fixed/capped column just forces text to wrap narrower than the window, when the point was
+     to use all the space that's actually available). Word-wrap below still applies at that real
+     edge, so this isn't "no wrapping at all" - just no artificial column short of it. Users who
+     want a narrower reading column instead can set `viewerMaxWidth` in config.json (lm-statusbar
+     shows the current value, next to the filename, read-only) - see the
+     `.lm-content.lm-width-limited` rule further down, which overrides this margin with equal auto
+     margins to center it instead. */
+  margin-left: 1rem;
+  margin-right: 1rem;
   line-height: 1.6;
-  /* Zoom applies only to the rendered content, not toolbar/statusbar (docs/PLAN.md M3). */
-  font-size: calc(1rem * var(--lm-zoom));
+  /* Zoom scales the whole rendered subtree as one unit - text, images, table borders, task-list
+     checkboxes, spacing, all together - the same way a browser's own page zoom does, rather than
+     enlarging text via font-size and then having to separately patch up every other element that
+     doesn't scale with it (this is what task-list checkboxes needed before - docs/PLAN.md M7 -
+     and the next thing that wouldn't have scaled on its own; user feedback). Scoped to
+     .lm-markdown only, not the toolbar/TOC/statusbar (docs/PLAN.md M3). */
+  zoom: var(--lm-zoom);
   /* Long unbroken text (a raw URL linkified without spaces, a long inline code span, a run of
      non-Latin text with no break opportunities...) must wrap instead of forcing lm-viewer into
      horizontal scroll - inherited by every descendant (links, list items, table cells...) so
@@ -333,10 +367,14 @@ lm-toc a.active {
   max-width: 100%;
 }
 
-/* Mermaid/KaTeX render-failure notices (docs/PLAN.md M4). Not tied to theme tokens - warnings
-   should stand out the same way regardless of light/dark theme. */
-.lm-render-warning {
-  margin: 0.25rem 0;
+/* Mermaid/KaTeX/image render-failure notices (docs/PLAN.md M4). Not tied to theme tokens -
+   warnings should stand out the same way regardless of light/dark theme. Same padding/border/
+   background/color for both - `.lm-render-warning` (mermaid, a standalone <p>) and
+   `.lm-render-warning-inline` (KaTeX inline/block, broken images - all `<span>`s, some nested
+   inside running text) used to look different (inline had no real padding, user report); the
+   split only needs to exist for `margin`, which only makes sense for the block one. */
+.lm-render-warning,
+.lm-render-warning-inline {
   padding: 0.5rem 0.75rem;
   border: 1px solid #d1242f;
   border-radius: 4px;
@@ -345,12 +383,8 @@ lm-toc a.active {
   font-size: 0.9em;
 }
 
-.lm-render-warning-inline {
-  border: 1px solid #d1242f;
-  border-radius: 3px;
-  background: rgb(209 36 47 / 10%);
-  padding: 0 0.15em;
-  color: #d1242f;
+.lm-render-warning {
+  margin: 0.25rem 0;
 }
 
 /* Print (docs/PLAN.md M3 / CLAUDE.md Print Rules): chrome hidden, code blocks not split across
@@ -387,9 +421,34 @@ lm-toc a.active {
     height: auto;
   }
 
-  .lm-markdown pre {
+  /* Keep these "atomic" blocks whole across a page break (user report: content was getting cut
+     off mid-element where pages turned) - browsers otherwise happily split any of them right at
+     the page boundary. If one doesn't fit in the remaining space, it moves to the next page
+     start instead of splitting - occasional blank space at a page bottom, but never a cut-off
+     code block/image/diagram/equation/quote/list item/table row. `page-break-inside` alongside
+     the standard `break-inside` is for older engines that don't recognize the newer property
+     (same belt-and-suspenders pattern as the print/light-theme `!important` overrides below). */
+  .lm-markdown pre,
+  .lm-markdown img,
+  .lm-markdown blockquote,
+  .lm-markdown li,
+  .lm-markdown tr,
+  .lm-mermaid,
+  .lm-math-block {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* A heading printed alone at the very bottom of a page, with its own content pushed to the
+     next, reads as disconnected from what follows it - keep it with the content after it. */
+  .lm-markdown h1,
+  .lm-markdown h2,
+  .lm-markdown h3,
+  .lm-markdown h4,
+  .lm-markdown h5,
+  .lm-markdown h6 {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   .lm-print-light {
