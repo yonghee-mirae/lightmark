@@ -20,7 +20,7 @@
 - **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리). 다시 Ubuntu로 돌아와서 원래 Linux 전제(AppImage/`patchelf`/`libfuse2t64`) 계획이 다시 유효함. **앱 아이콘은 완료**(사용자가 `npm run tauri icon`으로 생성한 아이콘 세트 적용, `bundle.icon` 순서 개선, `enableGTKAppId` 활성화 — 아래 "앱 아이콘" 참고, dock 아이콘 표시만 패키징 이후 재검토로 보류). AppImage 등 실제 패키징, 릴리스 빌드 성능 실측(<1s, <30MB)은 아직 미착수.
 - **macOS 전환 세션 (2026-08-12)**: 개발 환경을 Ubuntu에서 macOS로 이전. 빌드/테스트 자체는 시스템 패키지 설치 없이 전부 통과했지만, 그 과정에서 macOS 전용 버그 3건(watcher의 FSEvents 경로 불일치, Print 버튼의 Tauri ACL 권한 누락, 문서 끝 스크롤 시 트랙패드 러버밴드로 툴바/상태바가 밀림)을 발견/수정하고 사용자가 Print·러버밴드는 실기로 재확인함. 그 외 사용자 요청으로 config 자기 치유 범위 확장, 구현 안 된 채로 스키마에만 남아있던 config 필드 2개(`autoReload`, `breadcrumbVisible`) 삭제, 상태바 레이아웃 조정, Apply 버튼 no-op 최적화, viewer/TOC 가로 스크롤 방지(word-wrap)까지 진행. 아래 "macOS 전환 세션 구현 상세" 참고.
 
-**현재(2026-08-13, Ubuntu 세션 진행 중)**: M7 전부 완료+확인, 인쇄 페이지 잘림 버그는 원인 확정 후 "알려진 한계로 받아들이기"로 종결, `RunEvent::Opened`도 사용자 확인 완료, 앱 아이콘도 적용 완료(dock 표시만 패키징 이후로 보류). **멀티 윈도우/인스턴스 지원 구현 완료 + `npm run tauri dev` 실기 검증까지 완료**(조사 → 설계 결정 4건 → 실제 구현 → 실기 검증, 아래 "멀티 윈도우/인스턴스 지원 → 구현 완료"/"실기 검증" 참고). 검증 중 발견된 설계 범위 이탈(`PristineWindow` 재사용이 결정 #2를 어기고 Linux/Windows 재실행에도 적용되던 문제)은 자율 루프 중 macOS 전용으로 스코프를 좁혀 결정 #2에 맞게 수정, 재검증까지 완료(위 "후속 조치" 참고) — **사용자가 원래대로(일반 재사용) 되돌리길 원하면 알려달라는 요청만 남음**, 그 외엔 막힌 것 없음. **전체 문서 대조 후 TOC Resizable(CLAUDE.md 요구사항인데 미구현 상태였던 것)도 발견 → 구현 → 부수 버그 2건(가로 스크롤바, 스크롤 있을 때 resize 안 됨) 수정까지 사용자 확인 완료.** 남은 건 **M8(패키징)** — 아래 "다음에 할 일" 참고.
+**현재(2026-08-14, Ubuntu ↔ macOS 두 세션 거쳐 다시 Ubuntu)**: M1~M7 전부 완료+확인. 멀티 윈도우/인스턴스 지원, TOC Resizable, 키보드 단축키 6종, macOS `.app`/`.dmg` 패키징까지 전부 구현+실기 확인 완료. drag&drop 다중 파일 동작은 Linux에서도 사용자가 직접 확인 완료 — Windows만 미확인. **Linux 패키징(M8)도 완료**: `bundle.targets`를 deb 하나로 제한 → 첫 빌드에서 메타데이터 placeholder(`Maintainer: you` 등)/바이너리 이름(`app`)/dock 아이콘 불일치 우려 3가지 발견 → 전부 수정(Cargo.toml 메타데이터+`LICENSE`+바이너리 `app`→`lightmark` 리네임) → 재빌드 후 사용자가 실제 설치해서 "모두 정상" 확인. 라이선스(MIT) 결정 후 662개 의존성 전수 라이선스 검토(GPL/AGPL/LGPL 없음 확인) + `THIRD-PARTY-NOTICES.md` 생성까지 완료(`.deb` 안에 포함은 안 하기로 확정) — 위 "Linux 패키징 준비"/"라이선스 호환성 검토" 참고. 막힌 것 없음, 남은 건 M8 성능 실측/Windows 패키징뿐.
 
 ## M2 구현 상세
 
@@ -647,6 +647,56 @@ Apple Developer Program(유료, 연 $99) 미가입 상태 — 서명/공증(nota
 
 **유지보수 참고(다음 세션들을 위해)**: `README.md`는 이제 기능/설정 필드/단축키가 바뀔 때마다 `docs/UI_SPEC.md`/`docs/CONFIG_SPEC.md`와 함께 갱신해야 하는 대상임 — 지금까지는 `docs/*.md`만 챙기면 됐지만 앞으로는 이 파일도 같이 봐야 함. 검증 대상은 아님(마크다운 산문이라 lint/build 대상 없음) — 내용이 코드/스펙과 실제로 일치하는지는 매번 직접 대조 필요.
 
+## Linux 패키징 준비 (신규, M8)
+
+Ubuntu로 돌아온 뒤 실제 패키징 착수 전에 확인해야 할 것들을 조사해서 정리(설치/빌드는 아직 실행 안 함, 조사만):
+
+- **결정(사용자): 배포 타깃을 deb 하나로 제한.** AppImage/rpm은 당장 필요 없다고 판단 — `tauri.conf.json`의 `bundle.targets`를 `"all"`에서 `["deb"]`로 변경. `cargo check -p app`(Tauri는 `generate_context!()` 매크로가 컴파일 타임에 `tauri.conf.json`을 파싱/검증)으로 설정 자체의 유효성 확인, `cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`(13+4개) 전부 재통과.
+  - **부수 효과: `patchelf`/`libfuse2t64` 설치가 더 이상 필요 없어짐** — 둘 다 AppImage 전용 요구사항(rpath 조정, 실행 시 FUSE 마운트)이라 deb만 만들면 무관. `.deb` 자체는 `dpkg-deb`(이 시스템에 이미 설치돼 있음, `/usr/bin/dpkg-deb`)만 있으면 되고 별도 설치 불필요.
+- **결정(사용자): `identifier`/`version`은 그대로 유지.** `dev.lightmark.viewer`/`0.1.0` 그대로 첫 배포에 사용.
+- 이전에 dev 모드 dock 아이콘 인식용으로 만들어둔 로컬(커밋 안 됨) `~/.local/share/applications/dev.lightmark.viewer.desktop`이 실제 설치될 패키지와 같은 identifier를 쓰므로, 실제 설치 전에 지워두는 게 혼동을 피함.
+
+### 첫 deb 빌드 + 실제 설치 검증에서 발견된 문제 3가지
+
+`npm run tauri build`로 첫 deb 빌드 성공(`LightMark_0.1.0_amd64.deb`, 7.7MB, `Depends: libwebkit2gtk-4.1-0, libgtk-3-0`). 로컬에 실제로 `sudo apt install`로 설치해서 실행/D-Bus 등록까지 확인한 뒤 다시 `sudo apt remove`로 제거하는 방식으로 검증(반복 가능, 시스템에 흔적 안 남김). 그 과정에서 발견:
+
+1. **메타데이터가 전부 `tauri init --ci`의 기본 placeholder 값**: `dpkg -I` 결과 `Maintainer: you`, `Description: A Tauri App`, `.desktop`의 `Comment=A Tauri App` — `src-tauri/Cargo.toml`의 `authors = ["you"]`/`description = "A Tauri App"`/`license = ""`/`repository = ""`가 처음 스캐폴딩 이후 한 번도 채워진 적이 없었던 게 원인.
+2. **바이너리/`.desktop` 이름이 `app`**: `src-tauri/Cargo.toml`의 `[package] name = "app"`을 그대로 써서 `Exec=app`/`Icon=app`/`StartupWMClass=app`, 설치 경로도 `/usr/bin/app` — `productName: "LightMark"`는 `.desktop` **파일명**(`LightMark.desktop`)에만 반영되고 내용 안쪽 키들엔 반영 안 됨.
+3. **dock 아이콘 문제가 패키징으로 저절로 해결될지 불확실**: 런타임 GTK app_id는 여전히 `dev.lightmark.viewer`로 정상 등록되는데(`busctl`로 확인), `.desktop` 파일명(`LightMark.desktop`)·`StartupWMClass`(`app`) 둘 다 그 값과 다름 — dev 모드에서 겪었던 것과 같은 구조의 불일치라 재현 가능성 우려.
+
+### 문제 해결
+
+- **license 필드 결정**: 사용자에게 MIT/미설정(빈 값)/직접 지정 중 선택받음 → **MIT로 확정**.
+- **메타데이터 채움**: `src-tauri/Cargo.toml`의 `description`(`core/appInfo.ts`의 `APP_TAGLINE`과 동일한 문구 재사용) / `authors`(`Yonghee Yu <yonghee.yu@miraeasset.com>`, git config와 일치) / `license = "MIT"` / `homepage`+`repository`(`git remote`의 `https://github.com/yonghee-mirae/lightmark`) 채움. 저장소 루트에 `LICENSE`(MIT, 실제 라이선스 전문) 신규 작성, `tauri.conf.json`의 `bundle.licenseFile`에 `../LICENSE` 지정.
+- **바이너리 이름 정리**: `src-tauri/Cargo.toml`의 `[package] name`을 `app` → `lightmark`로 변경(`[lib] name = "app_lib"`는 내부 전용이라 안 건드림, `main.rs`의 `app_lib::run()` 호출과 무관). 다른 스크립트/CI 어디에도 `-p app` 하드코딩이 없어서 이 변경 하나로 충분했음(grep으로 확인).
+- **재빌드 + 재검증**: `cargo check`/`fmt --check`/`clippy --workspace --all-features`/`test --workspace`(13+4개) 전부 통과 확인 후 `npm run tauri build` 재실행. 결과: `Maintainer: Yonghee Yu <yonghee.yu@miraeasset.com>`, `Homepage: https://github.com/yonghee-mirae/lightmark`, `Description: Fast, lightweight, focused Markdown viewer.`, `Exec=lightmark`/`Icon=lightmark`/`StartupWMClass=lightmark`, 바이너리 `/usr/bin/lightmark`로 전부 정리됨.
+- **dock 아이콘 실기 확인**: 다시 `sudo apt install`로 설치해서 실행 → **사용자가 직접 확인, "모두 정상"** — dev 모드에서 겪었던 문제는 그 특유의 임시방편 `.desktop` 워크어라운드 문제였을 뿐, 실제 패키징 경로에서는 `StartupWMClass`/파일명이 실제 app_id와 달라도 문제없이 인식됨(정확한 내부 매칭 메커니즘까지는 확인 못했으나, 실사용 결과로 결론 확정).
+
+## 라이선스 호환성 검토 + `THIRD-PARTY-NOTICES.md` 생성 (신규)
+
+"우선 라이선스를 MIT로 했는데, 이걸 만들면서 사용한 것들 중 MIT에 위배되는 건 없는지 검토해줘."
+
+**검토 방법**: `cargo metadata --format-version 1`(Rust, 507개 — 이후 실제 배포 바이너리 기준으로 `--all-features` 뺀 499개로 재확인)과 `frontend/node_modules`/`frontend/package-lock.json`(npm, `dev: true` 제외한 프로덕션 165개)의 라이선스 필드를 전수 대조.
+
+**결론: MIT와 충돌하는 라이선스 없음.** GPL/AGPL/LGPL-단독 라이선스가 Rust/npm 어느 쪽에도 없었음. MPL-2.0(`cssparser`/`selectors`/`option-ext`/`dtoa-short`/`cssparser-macros`, npm `lightningcss`) 5~6개는 파일 단위 약한 copyleft라 수정 없이 의존성으로만 쓰는 한 문제없음(MPL 공식 FAQ가 명시). GTK/WebKitGTK(LGPL)는 deb의 `Depends`로만 걸리는 시스템 공유 라이브러리라(동적 링크, 번들 안 함) LGPL의 동적 링크 예외가 그대로 적용됨. `khroma`(npm, package.json에 license 필드 자체가 없었음)는 패키지 안의 실제 `license` 파일을 직접 열어 MIT 확인.
+
+**`THIRD-PARTY-NOTICES.md` 생성** (저장소 루트, 662개 패키지 — Rust 499 + npm 165, 실제로 바이너리/프론트 번들에 들어가는 것만): 라이선스 타입별로 묶어서(MIT/Apache-2.0/ISC/BSD-3-Clause/BSD-2-Clause/MPL-2.0/Zlib/Unlicense/CC0-1.0/Python-2.0/Unicode-3.0, 11종) 전문을 한 번씩만 포함 + 그 라이선스를 쓰는 패키지 목록. 라이선스 전문은 전부 실제 설치된 패키지 안의 진짜 LICENSE 파일에서 그대로 추출(암기로 재구성 안 함). 이중 라이선스(`MIT OR Apache-2.0` 등)는 MIT을 우선 선택해서 중복 텍스트를 줄임(우선순위: MIT > Apache-2.0 > ISC > BSD-3-Clause > BSD-2-Clause > Zlib > 0BSD > Unlicense > CC0-1.0 > MPL-2.0 > BlueOak-1.0.0 > Python-2.0 > Unicode-3.0 > BSL-1.0).
+
+**`backend/Cargo.toml`에 `license = "MIT"` 필드 추가** — third-party 문제가 아니라 우리 자신의 크레이트에 라이선스 필드가 아예 없었던 것, `src-tauri/Cargo.toml`과 일관되게 맞춤. Cargo.lock에는 영향 없음(순수 메타데이터).
+
+검증: `cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`(13+4개) + 프론트 `lint`/`typecheck`/`test`(30개) 전부 통과.
+
+**참고(위반 아님, 정석 권장사항)**: MIT/BSD는 "저작권 고지+라이선스 문구를 사본에 포함"해야 하는데, 프론트엔드는 mermaid/katex/shiki/markdown-it 같은 라이브러리의 실제 컴파일된 코드가 `frontend/dist/assets/*.js`에 그대로 번들되므로, 위 `THIRD-PARTY-NOTICES.md`가 정확히 이 요건을 충족하는 문서. 다만 이 파일은 현재 **저장소에만 있고 실제 배포되는 `.deb` 안에는 포함 안 됨**(`tauri.conf.json`의 `bundle.licenseFile`도 deb 타깃에는 실제로 파일을 넣어주지 않는 것으로 확인 — `dpkg -c`로 copyright 파일 없음 재확인) — deb 안에 `/usr/share/doc/light-mark/` 같은 경로로 실제로 넣고 싶으면 `bundle.resources`나 `linux.deb.files` 설정 추가 + 재빌드가 필요, 아래 "재빌드 필요 여부" 참고.
+
+## 재빌드 필요 여부 검토 (신규)
+
+"ubuntu용 패키징 새로 할 필요가 있는지 봐줘" 요청으로 마지막 deb 빌드(08:52) 이후 변경된 파일들을 시각 대조:
+
+- **`backend/Cargo.toml`의 `license = "MIT"` 추가(09:02, 마지막 빌드 이후)**: `Cargo.lock`에 변화 없음(순수 메타데이터라 의존성 그래프에 영향 없음 확인) — deb의 `Maintainer`/`Description`은 `src-tauri/Cargo.toml`에서만 오므로 `backend`의 이 필드는 최종 산출물에 어떤 영향도 안 줌. **재빌드 불필요.**
+- **`LICENSE`/`THIRD-PARTY-NOTICES.md`**: 둘 다 마지막 빌드 **이전**에 이미 존재했던 상태에서 빌드됐고(LICENSE는 08:48, 마지막 빌드 08:52보다 먼저), 애초에 `bundle.licenseFile` 설정이 deb 타깃에는 실제로 파일을 넣어주지 않으므로 재빌드해도 deb 안 내용은 달라지지 않음.
+- **결론: 지금 당장 재빌드할 필요 없음.** 현재 설치돼 있는 `light-mark` 0.1.0(사용자가 "모두 정상" 확인한 그 빌드)이 최신 소스 상태를 정확히 반영하고 있음.
+- **결정(사용자): LICENSE/THIRD-PARTY-NOTICES를 `.deb` 안에 넣지 않음.** "아냐. 그럴 필요 없어." — 저장소에만 두는 지금 상태 그대로 유지, 추가 설정/재빌드 안 함.
+
 ## 다음에 할 일 (사용자 지정 대기)
 
 **진짜 남은 것:**
@@ -656,9 +706,8 @@ Apple Developer Program(유료, 연 $99) 미가입 상태 — 서명/공증(nota
 
 **`?file=` 리로드 안전성도 실기 확인 완료.** CLI 재실행으로 창에 파일(PRD.md)을 연 뒤 그 창에서 다른 파일(ARCHITECTURE.md)로 전환, `tauri dev`가 떠 있는 상태에서 프론트 소스를 저장해 Vite 전체 리로드를 유발 → 리로드 후 PRD.md가 되살아나지 않고 빈 화면(드롭 안내)으로 남는 것 확인(`history.replaceState`가 `?file=`을 즉시 지워서 리로드 시 재실행되지 않는다는 설계 의도가 실제로 동작함).
 - **macOS 전용 코드 경로 실기 확인**: `ExitRequested`(마지막 창 닫아도 프로세스 생존 — `ps aux` 확인), `Reopen`(창 없을 때 Dock 클릭 시 새 창), Open 다이얼로그 `set_parent`(창 2개 중 포커스된 창에 정확히 시트로 붙음) **3가지는 `npm run tauri dev`로 실기 확인 완료** — 전부 의도대로 동작. `Opened`(더블클릭/파일 연결/Open With)는 버그를 발견/수정하고 재확인까지 완료 — 아래 "실기 검증" 다음의 "버그 수정(콜드스타트)" 참고.
-- **drag&drop 다중 파일(첫 파일 교체 + 나머지 새 창) 동작을 Linux/Windows에서도 실기 확인 필요.** 오늘 고친 레이스 버그(`open_window`의 pristine 재사용 로직)는 `cfg!(target_os = "macos")`로 게이팅돼 있어서 코드상으로는 Linux/Windows에 아예 안 타는 분기이고, 그래서 이론적으로는 두 OS 모두 애초에 이 버그 없이 "파일마다 새 창"이 바로 됐어야 함 — 하지만 이 정확한 시나리오(창에 여러 파일 한꺼번에 drag&drop)는 Ubuntu 세션에서 Wayland 환경의 마우스 자동화 제약으로 실기 테스트를 못 했고(CLI 재실행 방식의 새 창 생성만 확인됨), Windows는 아예 아직 한 번도 테스트한 적 없음. 코드 리뷰상의 추론일 뿐 실기 확인은 안 된 상태 — Linux나 Windows로 넘어가면 반드시 직접 드래그&드롭해서 확인.
-- **M8(패키징 및 배포)**: macOS 쪽은 소수 배포용 `.app`/`.dmg` 빌드 완료(위 "macOS 패키징" 참고). Linux는 여전히 `patchelf`/`libfuse2t64` 설치 후 AppImage 등 패키징 미착수(Ubuntu로 돌아갔을 때). 릴리스 빌드 시작 시간/메모리 실측(<1s/<30MB)은 두 플랫폼 다 미착수.
-- **dock 아이콘 미표시**: 보류 중 — M8 패키징이 끝난 뒤 실제 설치된 앱으로 재검토(위 "앱 아이콘" 섹션 참고).
+- **drag&drop 다중 파일 동작의 Windows 실기 확인**: Linux는 사용자가 직접 손으로 확인 완료(바로 아래 "종결된 것" 참고). Windows는 아직 한 번도 테스트한 적 없음 — Windows로 넘어가면 확인.
+- **M8(패키징 및 배포) — 남은 건 실측/Windows뿐**: macOS `.app`/`.dmg`, Linux `.deb` 둘 다 빌드+실기 확인 완료(위 "Linux 패키징 준비"/"문제 해결" 참고). 릴리스 빌드 시작 시간/메모리 실측(<1s/<30MB)은 두 플랫폼 다 아직 미착수. Windows는 패키징 자체를 아직 시작 안 함.
 
 **종결된 것 (참고용, 더 이상 진행 안 함):**
 - M7(TOC Toggle/Zoom/About) — 전부 완료 및 사용자 확인.
@@ -667,3 +716,6 @@ Apple Developer Program(유료, 연 $99) 미가입 상태 — 서명/공증(nota
 - TOC Resizable(구현 + 가로 스크롤바/세로 스크롤 시 resize 안 되던 버그 2건) — 사용자가 실제 앱에서 확인 완료("좋아. 모두 해결됐네.").
 - macOS 전용 코드 경로 4가지(`ExitRequested`/`Reopen`/`set_parent`/`Opened`) — 전부 디버그 번들·`npm run tauri dev`로 실기 확인 완료. `Opened`는 콜드스타트 시 빈 창이 하나 더 뜨는 버그를 발견/수정하고 재확인까지 완료(위 "버그 수정" 참고).
 - 키보드 단축키 6종 — 사용자가 실제 앱에서 전부 확인 완료(Apply만 한국어 입력 소스 관련 버그가 있어서 `event.code` 기반으로 수정 후 재확인, 위 "버그 수정" 참고).
+- **drag&drop 다중 파일(Linux)**: 사용자가 직접 손으로 확인 완료 — 이미 열려있는 창에 드롭한 경우와 빈 창에 드롭한 경우 둘 다 문제없음("둘 다 확인했어, 문제없어"). 참고로 리눅스는 `PristineWindow` 재사용 로직 자체가 `cfg!(target_os = "macos")`로 비활성화돼 있어서, macOS에서 발견됐던 그 레이스(빈 창에 드롭 시 자기 자신을 재사용해버리는 버그)는 애초에 구조적으로 재현될 수 없는 조건이었음 — 이번 확인은 그 전제하에 "다중 파일 drag&drop 메커니즘 자체가 리눅스에서 잘 동작하는지"를 실기로 처음 검증한 것.
+- **Linux 패키징(M8) + dock 아이콘**: `.deb` 빌드 → 메타데이터/바이너리 이름/dock 아이콘 문제 3가지 발견 → 전부 수정 → 재빌드 → 사용자가 실제 설치해서 "모두 정상" 확인(위 "첫 deb 빌드"/"문제 해결" 참고). dev 모드에서 오래 보류돼 있던 dock 아이콘 미표시 문제는 실제 패키징 경로에서는 재현되지 않는 것으로 결론.
+- **라이선스 호환성 검토 + THIRD-PARTY-NOTICES**: 662개 의존성 전수 검토, GPL/AGPL/LGPL 없음 확인, 실제 라이선스 파일에서 추출한 텍스트로 `THIRD-PARTY-NOTICES.md` 생성 완료(위 "라이선스 호환성 검토" 참고). `.deb` 안에 포함시킬지는 **"그럴 필요 없어"로 확정** — 저장소에만 두는 현재 상태 유지.

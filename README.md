@@ -33,9 +33,11 @@ LightMark는 크로스 플랫폼 Markdown **뷰어**입니다. 편집기가 아�
 - **드래그&드롭**: 파일 하나는 그 창에서 바로 열기, 여러 개를 한꺼번에 드롭하면 파일마다 새 창
 - **JSON 기반 설정**: `config.json`을 직접 편집(그래픽 설정 화면 없음), 툴바의 **Apply**로 재적용
 
-## 설치 (macOS)
+## 설치
 
-> Windows/Linux 설치 안내는 추후 추가됩니다.
+> Windows 설치 안내는 추후 추가됩니다.
+
+### macOS
 
 1. `.dmg` 파일을 받습니다.
 2. 마운트한 뒤 **LightMark.app**을 **Applications** 폴더로 드래그합니다.
@@ -46,6 +48,18 @@ LightMark는 크로스 플랫폼 Markdown **뷰어**입니다. 편집기가 아�
      ```
      이후 정상적으로 더블클릭 실행됩니다.
    - **시스템 설정**: 더블클릭 → 경고 창 닫기 → **시스템 설정 → 개인정보 보호 및 보안** 맨 아래로 스크롤 → 차단됐다는 안내 옆의 **"그래도 열기"** 클릭 → 암호/Touch ID 확인.
+
+### Linux (Ubuntu/Debian 계열)
+
+1. `.deb` 파일을 받습니다.
+2. 설치:
+   ```bash
+   sudo apt install ./LightMark_0.1.0_amd64.deb
+   ```
+3. 앱 목록(GNOME Activities/Dash 등)에서 **LightMark**를 실행하거나, 터미널에서 `lightmark`로 실행합니다.
+4. 제거: `sudo apt remove light-mark`
+
+AppImage/rpm은 현재 배포 대상이 아닙니다(deb 전용).
 
 ## 설정 파일 수정
 

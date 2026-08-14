@@ -2,6 +2,7 @@
 name = "backend"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 # `dev-server` is off by default: the lib itself (file/watcher/config) has no async runtime or
 # HTTP dependency at all, so a Tauri release build linking against this crate never pulls in

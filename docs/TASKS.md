@@ -37,5 +37,6 @@
 
 ## Milestone 8
 - [x] App Icon — `npm run tauri icon`으로 생성, `tauri.conf.json`의 `bundle.icon`이 이미 같은 경로를 참조
-- [x] Packaging (macOS) — `npm run tauri build`로 `.app`/`.dmg` 생성, ad-hoc 서명 자동 적용(Apple Developer 계정 없이 소수 배포용). Linux AppImage는 여전히 미착수(fuse/patchelf 미설치).
-- [ ] Release
+- [x] Packaging (macOS) — `npm run tauri build`로 `.app`/`.dmg` 생성, ad-hoc 서명 자동 적용(Apple Developer 계정 없이 소수 배포용).
+- [x] Packaging (Linux) — 배포 타깃을 deb 하나로 제한(사용자 결정, `bundle.targets: ["deb"]`). `npm run tauri build`로 `.deb` 생성, 메타데이터(Maintainer/Description/Homepage)·바이너리 이름(`app`→`lightmark`) 정리 후 실제 설치까지 확인.
+- [ ] Release — 릴리스 빌드 시작 시간/메모리 실측(<1s/<30MB), Windows 패키징 미착수.

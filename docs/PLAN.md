@@ -387,11 +387,16 @@ M6(Tauri 통합)에서 분리. 통합이 끝난 뒤 마지막에 하는 게 맞�
     - **(1) 근본 원인**: GNOME Shell의 Wayland 앱 아이콘 매칭은 실행 중인 창의 app_id를 `.desktop` **파일명**(확장자 제외)과 직접 비교하는 걸 우선시함(`StartupWMClass`는 X11 시절 창 위주의 보조 수단) — 파일명이 `lightmark-dev.desktop`이라 app_id(`dev.lightmark.viewer`)와 안 맞았음. 파일명을 정확히 `dev.lightmark.viewer.desktop`으로 바꿔서 해결(내용의 `StartupWMClass`는 보조 수단으로 그대로 유지).
     - 검증: `desktop-file-validate` 통과, `gio launch`로 실제 기동 확인, `busctl --user list`로 `dev.lightmark.viewer` D-Bus 이름 등록 재확인. **사용자가 재확인 후에도 dock 아이콘은 여전히 안 보임** — 자동화 도구로는 네이티브 Wayland 창 상태를 더 조회할 수 없어(GNOME Shell Eval은 기본 비활성화) 사용자에게 개발자 도구 활성화 여부를 물었으나, **사용자가 "일단 미뤄둘게. 패키징 이후 다시 보자"로 보류 결정** — M8 패키징 이후 실제 설치된 앱으로 재검토. 지금까지의 변경(`enableGTKAppId`, `bundle.icon` 순서, 로컬 `.desktop` 파일)은 무해하므로 그대로 유지.
   - 검증: `cargo check -p app`/`cargo fmt --check`/`cargo clippy --workspace --all-features`/`cargo test --workspace`(13개) 전부 통과.
-- AppImage 등 `npm run tauri build` 패키징 — `patchelf`/`libfuse2t64`(Ubuntu 24.04는 `libfuse2`가 아니라 `libfuse2t64`, M6에서 확인해둔 사항) 설치 필요. `tauri.conf.json`의 `bundle.targets` 기본값이 "all"이라 그대로 두면 AppImage/deb/rpm을 다 시도하니, 필요하면 `--bundles`로 범위를 좁힌다.
-- 시작 시간 < 1s, 일반 문서 메모리 < 30MB 실측 — 디버그 빌드가 아니라 실제 릴리스 바이너리(`npm run tauri build -- --no-bundle` 또는 번들링된 최종 결과물)로 측정해야 의미 있는 수치가 나온다.
-- 코드 서명/배포 채널 등 실제 릴리스 절차(범위는 착수 시점에 확정).
+- **결정(사용자): 배포 타깃을 deb 하나로 제한.** `tauri.conf.json`의 `bundle.targets`를 `"all"`(AppImage+deb+rpm)에서 `["deb"]`로 변경 — AppImage 전용 요구사항이던 `patchelf`/`libfuse2t64`(Ubuntu 24.04는 `libfuse2`가 아니라 이 이름) 설치가 불필요해짐, `.deb` 자체는 이미 설치돼 있는 `dpkg-deb`만 있으면 됨.
+- **deb 빌드 완료 + 실제 설치 검증 + 발견된 문제 3가지 수정 (완료).** 첫 빌드(`LightMark_0.1.0_amd64.deb`, 7.7MB)를 실제로 `sudo apt install`/`sudo apt remove`로 반복 설치·검증하며 진행:
+  1. **메타데이터가 전부 `tauri init --ci` 기본값**(`Maintainer: you`, `Description: A Tauri App`) — `src-tauri/Cargo.toml`의 `authors`/`description`/`license`/`repository`/`homepage`를 실제 값(`core/appInfo.ts`의 `APP_TAGLINE`, git config, `git remote`)으로 채움. license는 사용자에게 확인받아 MIT로 확정, 저장소 루트에 `LICENSE` 신규 작성, `bundle.licenseFile`로 연결.
+  2. **바이너리/`.desktop`이 전부 `app`이라는 이름**(`Exec=app`/`Icon=app`/`StartupWMClass=app`, `/usr/bin/app`) — `[package] name`을 `app` → `lightmark`로 변경해서 정리(`[lib] name = "app_lib"`는 안 건드림, `main.rs`의 `app_lib::run()`과 무관).
+  3. **dock 아이콘 불일치 우려**(런타임 GTK app_id는 `dev.lightmark.viewer`인데 `.desktop` 파일명/`StartupWMClass`는 다름) — 재빌드 후 실제 설치해서 사용자가 직접 확인, **문제없이 정상 표시됨**. dev 모드에서 오래 보류돼 있던 dock 아이콘 미표시 문제는 실제 패키징 경로에서는 재현 안 되는 것으로 결론.
+  - **라이선스 호환성 검토**: MIT로 확정하기 전, 실제 배포 바이너리에 들어가는 Rust 499개(`cargo metadata`, 기본 feature) + npm 165개(`package-lock.json`의 `dev: true` 제외 프로덕션만) 전수 대조 — GPL/AGPL/LGPL 없음 확인(MPL-2.0 몇 개는 파일 단위 약한 copyleft라 무수정 의존성으로는 무관, GTK/WebKitGTK는 동적 링크라 LGPL 예외 적용). 저장소 루트에 `THIRD-PARTY-NOTICES.md` 생성(662개 패키지, 라이선스 타입 11종별로 실제 설치 파일에서 추출한 전문 1회 + 패키지 목록) — 상세: `HANDOFF.md`. `LICENSE`/`THIRD-PARTY-NOTICES.md`를 실제 `.deb` 안에 포함시킬지는 **"그럴 필요 없어"로 확정** — 저장소에만 두는 현재 상태 유지, `bundle.resources`/`deb.files` 추가 안 함.
+- 시작 시간 < 1s, 일반 문서 메모리 < 30MB 실측 — 디버그 빌드가 아니라 실제 릴리스 바이너리로 측정해야 의미 있는 수치가 나온다. **아직 미착수** (macOS/Linux 둘 다).
+- 코드 서명/배포 채널 등 실제 릴리스 절차 — Windows 패키징 자체가 아직 미착수.
 
-**검증**: `npm run tauri build` 성공(선택한 타깃 전부). 패키징된 결과물을 실제로 설치해서 열기/저장 반영/인쇄/Config 동작 전체 플로우 재확인. 시작 시간/메모리 실측치를 `CLAUDE.md`의 목표(<1s, <30MB)와 비교해 기록.
+**검증**: `npm run tauri build` 성공(macOS `.app`/`.dmg`, Linux `.deb` 둘 다). 패키징된 결과물을 실제로 설치해서 실행/D-Bus 등록/dock 아이콘까지 재확인 완료. 시작 시간/메모리 실측치를 `CLAUDE.md`의 목표(<1s, <30MB)와 비교해 기록하는 것만 남음.
 
 ---
 
@@ -410,6 +415,8 @@ macOS 콜드스타트에서 `setup()`이 `RunEvent::Opened`보다 먼저 실행�
 검증: 프론트(`lint`/`typecheck`/`build`/`test`, 30개) + 백엔드(`cargo fmt --check`/`clippy --workspace --all-features`/`test --workspace`) 전부 통과. `npm run tauri dev` 실기 검증(D-Bus `busctl` tree로 창 개수 확인)도 완료 — single-instance 라우팅/창 생성 자체는 정상 동작. 검증 중 한 차례 `PristineWindow` 재사용이 macOS 게이팅 없이 Linux/Windows의 일반 재실행에도 적용돼 결정 (2)의 "OS 트리거는 새 창"을 어기는 걸 발견 → 자율 루프 중 `cfg!(target_os = "macos")` 게이팅을 추가해 수정하고 재실기 검증(재실행 후 `window/1`·`window/2` 둘 다 존재)까지 완료(상세: `HANDOFF.md`의 "실기 검증(Linux, npm run tauri dev)"/"후속 조치"). macOS 전용 부분(`Opened`/`Reopen`/`ExitRequested`, `PristineWindow` 재사용, 다이얼로그 `set_parent`)은 이 세션이 Linux라 실기 검증 불가 — `RunEvent::Opened`와 같은 처지로 문서에 미검증 남김.
 
 **macOS 세션에서 실기 검증 중 발견/수정한 버그**: 빈(pristine) 창에 파일을 여러 개 한꺼번에 drag&drop하면, 첫 파일이 그 창에 비동기로 로드되는 동안(`watch_file` 호출 전까지 pristine 플래그가 안 지워짐) 나머지 파일들의 `open_new_window` 호출이 거의 동시에 도착해 "지금 드롭 대상이 된 그 창 자신"을 pristine으로 오인해 재사용(`navigate()`)해버리는 레이스가 있었음 — IPC 커스텀 프로토콜이 끊겨 `Load failed` 에러, 결과적으로 창 하나에 파일 하나만 남음. `open_window(app, file, exclude)`에 `exclude` 파라미터를 추가해 "요청을 보낸 창 자신"을 재사용 후보에서 제외하도록 수정(`open_new_window` 커맨드가 자기 창 라벨을 넘김, 다른 4개 호출부는 OS 트리거라 "보낸 창" 자체가 없어 그대로 `None`). 수정 후 사용자가 실기로 재확인, 이 기회에 "drag&drop 다중 파일 → 첫 파일 교체 + 나머지 새 창" 동작 자체를 정식 결정으로 확정(위 (1) 참고). 상세: `HANDOFF.md`.
+
+**Linux에서도 drag&drop 다중 파일 실기 확인 완료(2026-08-14).** 리눅스는 `PristineWindow` 재사용 자체가 `cfg!(target_os = "macos")`로 비활성화돼 있어 위 레이스가 구조적으로 재현될 수 없는 조건이지만, "다중 파일 drag&drop 메커니즘 자체"는 Wayland 마우스 자동화 제약으로 이 저장소의 자동화 세션에서는 못 눌러봤던 부분 — 사용자가 이미 열린 창/빈 창 두 시나리오 모두 직접 drag&drop해서 확인("둘 다 확인했어, 문제없어"). Windows만 아직 미확인으로 남음.
 
 ---
 

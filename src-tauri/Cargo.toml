@@ -1,10 +1,11 @@
 [package]
-name = "app"
+name = "lightmark"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Fast, lightweight, focused Markdown viewer."
+authors = ["Yonghee Yu <yonghee.yu@miraeasset.com>"]
+license = "MIT"
+repository = "https://github.com/yonghee-mirae/lightmark"
+homepage = "https://github.com/yonghee-mirae/lightmark"
 edition = "2021"
 rust-version = "1.77.2"
 
