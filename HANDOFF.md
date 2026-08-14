@@ -20,7 +20,7 @@
 - **M8 (패키징 및 배포)**: 신규 마일스톤(M6에서 분리). 다시 Ubuntu로 돌아와서 원래 Linux 전제(AppImage/`patchelf`/`libfuse2t64`) 계획이 다시 유효함. **앱 아이콘은 완료**(사용자가 `npm run tauri icon`으로 생성한 아이콘 세트 적용, `bundle.icon` 순서 개선, `enableGTKAppId` 활성화 — 아래 "앱 아이콘" 참고, dock 아이콘 표시만 패키징 이후 재검토로 보류). AppImage 등 실제 패키징, 릴리스 빌드 성능 실측(<1s, <30MB)은 아직 미착수.
 - **macOS 전환 세션 (2026-08-12)**: 개발 환경을 Ubuntu에서 macOS로 이전. 빌드/테스트 자체는 시스템 패키지 설치 없이 전부 통과했지만, 그 과정에서 macOS 전용 버그 3건(watcher의 FSEvents 경로 불일치, Print 버튼의 Tauri ACL 권한 누락, 문서 끝 스크롤 시 트랙패드 러버밴드로 툴바/상태바가 밀림)을 발견/수정하고 사용자가 Print·러버밴드는 실기로 재확인함. 그 외 사용자 요청으로 config 자기 치유 범위 확장, 구현 안 된 채로 스키마에만 남아있던 config 필드 2개(`autoReload`, `breadcrumbVisible`) 삭제, 상태바 레이아웃 조정, Apply 버튼 no-op 최적화, viewer/TOC 가로 스크롤 방지(word-wrap)까지 진행. 아래 "macOS 전환 세션 구현 상세" 참고.
 
-**현재(2026-08-14, Ubuntu ↔ macOS 두 세션 거쳐 다시 Ubuntu)**: M1~M7 전부 완료+확인. 멀티 윈도우/인스턴스 지원, TOC Resizable, 키보드 단축키 6종, macOS `.app`/`.dmg` 패키징까지 전부 구현+실기 확인 완료. drag&drop 다중 파일 동작은 Linux에서도 사용자가 직접 확인 완료 — Windows만 미확인. **Linux 패키징(M8)도 완료**: `bundle.targets`를 deb 하나로 제한 → 첫 빌드에서 메타데이터 placeholder(`Maintainer: you` 등)/바이너리 이름(`app`)/dock 아이콘 불일치 우려 3가지 발견 → 전부 수정(Cargo.toml 메타데이터+`LICENSE`+바이너리 `app`→`lightmark` 리네임) → 재빌드 후 사용자가 실제 설치해서 "모두 정상" 확인. 라이선스(MIT) 결정 후 662개 의존성 전수 라이선스 검토(GPL/AGPL/LGPL 없음 확인) + `THIRD-PARTY-NOTICES.md` 생성까지 완료(`.deb` 안에 포함은 안 하기로 확정) — 위 "Linux 패키징 준비"/"라이선스 호환성 검토" 참고. 막힌 것 없음, 남은 건 M8 성능 실측/Windows 패키징뿐.
+**현재(2026-08-14, Ubuntu, 버전 0.2.0)**: M1~M8 전부 완료+확인(macOS `.app`/`.dmg`, Linux `.deb` 둘 다 패키징+실기 검증 완료 — Windows만 실제 머신에서 네이티브 빌드 남음, 준비사항 체크리스트 전달함). 하이퍼링크 외부 열기 버그 수정(사용자 확인 완료) + 타이틀바 파일명 버그(Tauri 업스트림 이슈로 "알려진 한계" 확정) → **0.1.1 패치 릴리스**. 내장 테마 10종으로 확장(github-light/dark + Dracula/Nord/Solarized/One/Gruvbox) → **0.2.0 마이너 릴리스**, 방금 `.deb` 재빌드+기존 설치본 업그레이드까지 확인 완료. 막힌 것 없음 — 남은 건 Windows 네이티브 빌드뿐. 세부 내역은 아래 각 절 참고(이 요약 줄은 매번 다시 씀 — 과거 세션 이력은 아래 본문에 그대로 누적돼 있음).
 
 ## M2 구현 상세
 
@@ -697,6 +697,80 @@ Ubuntu로 돌아온 뒤 실제 패키징 착수 전에 확인해야 할 것들�
 - **결론: 지금 당장 재빌드할 필요 없음.** 현재 설치돼 있는 `light-mark` 0.1.0(사용자가 "모두 정상" 확인한 그 빌드)이 최신 소스 상태를 정확히 반영하고 있음.
 - **결정(사용자): LICENSE/THIRD-PARTY-NOTICES를 `.deb` 안에 넣지 않음.** "아냐. 그럴 필요 없어." — 저장소에만 두는 지금 상태 그대로 유지, 추가 설정/재빌드 안 함.
 
+## Windows 빌드 조사 (신규)
+
+"windows용으로 크로스 빌드 가능해?" — 조사 결과 공유: 코드 자체는 유닉스 전용 경로/하드코딩이 없어 깨끗하지만(`grep`으로 확인), **Tauri는 Windows 크로스 컴파일을 공식 지원하지 않음** — WebView2 연동(`webview2-com`)의 COM ABI가 MSVC/GNU 타깃 간 미묘하게 다르고, MSI 인스톨러(WiX)는 리눅스 네이티브 툴체인이 아예 없음(NSIS `.exe`는 리눅스 네이티브 포트가 있어 그나마 가능성 있음). `gcc-mingw-w64-x86-64`/`nsis` apt 패키지 존재는 확인해뒀음(미설치).
+
+"windows pc에서 windows 빌드를 하려면 필요한 준비사항" 요청으로 실제 네이티브 빌드용 체크리스트 정리해서 전달(Rust+MSVC Build Tools, Node.js, `tauri.conf.json`의 `bundle.targets`를 `["deb"]`에서 Windows용(`nsis`/`msi`)으로 바꿔야 한다는 것, 서명 인증서 없으면 SmartScreen 경고 예상, `tauri-plugin-single-instance`의 Windows 전용 재진입 콜백 스레드 등 처음 실기 확인해야 할 것들).
+
+**실험적 크로스 빌드는 사용자가 취소함**: "일반 windows용으로 크로스 빌드 해보자, 설치용 패키징은 하지 말고"로 진행하려다 `sudo apt install gcc-mingw-w64-x86-64` 직전에 "아니다. 취소." — 아무것도 설치/변경 안 함(`git status` 클린 확인). **Windows는 실제 Windows 머신(또는 CI)에서 네이티브 빌드하는 방향으로 남겨둠**, 크로스 빌드 시도는 더 이상 진행 안 함.
+
+## 성능 실측(M8) — 사용자 결정으로 생략
+
+"성능은 충분히 좋아. 따로 측정할 필요 없어." — `CLAUDE.md`의 시작 시간 < 1s / 메모리 < 30MB 목표에 대한 별도 실측(`npm run tauri build`로 만든 릴리스 바이너리 기준)은 **진행하지 않기로 확정**. 실사용 체감상 이미 충분하다는 사용자 판단.
+
+## 버그 수정(사용자 리포트): 문서 내 하이퍼링크가 앱 창 안에서 열림
+
+"문서 내 하이퍼링크를 클릭하면 현재 뷰어 창 안에서 열리도록 돼 있는데, 외부 앱(브라우저 등)으로 연결되도록 해줘. 문서 내 heading 링크일 경우에는 뷰어 안에서 이동하도록 두고."
+
+**원인**: `frontend/src/components/lm-viewer.ts`엔 `<a>` 클릭에 대한 핸들러가 아예 없었음(`core/markdown.ts`도 외부/내부 링크를 구분하는 렌더링 로직이 없어서 완전히 동일하게 렌더링됨, `linkify: true`로 인한 자동 링크도 마찬가지) — `target="_blank"`도 없어서 `tauri-plugin-opener`가 자동 주입하는 클릭 인터셉트 스크립트(기본적으로 `open_js_links_on_click: true`)도 발동 조건(`target === '_blank'` 또는 Ctrl/Shift+클릭)을 안 만족해 평범한 클릭은 그냥 지나침. 그 결과 아무것도 안 막아서 Tauri webview가 그 URL로 자기 자신을 네비게이션해버렸음(앱이 그 자리에서 사라짐).
+
+**수정**:
+- `lm-viewer.ts`에 `click` 리스너 추가 — 클릭된 `<a>`의 `href`가 `#`로 시작하면(같은 문서 내 heading 앵커) 아무것도 안 하고 그대로 둠(기존 네이티브 앵커 스크롤 그대로 유지). 그 외(절대 URL, `mailto:`, linkify 자동 링크 등 - `core/markdown.ts`에서 전부 동일하게 렌더링됨)는 `preventDefault()` + `lm-external-link` 커스텀 이벤트(`{ url }`) 발생.
+- `main.ts`가 그 이벤트를 받아 `backend.openUrl(url)` 호출 — 컴포넌트는 백엔드를 직접 모르고 이벤트만 dispatch하는 기존 아키텍처(`lm-toc-select`/`lm-file-drop`과 동일 패턴) 그대로 유지.
+- `BackendApi`에 `openUrl(url): Promise<void>` 추가 — `onFileDrop`/`openWindow`와 달리 **필수** 메서드(Web/Dev도 `window.open(url, '_blank', 'noopener,noreferrer')`로 의미 있게 구현 가능해서 optional로 둘 이유가 없음).
+- **Tauri 쪽 새 커맨드 `open_url`**: `tauri-plugin-opener`의 JS 패키지(`@tauri-apps/plugin-opener`)를 새로 추가하는 대신, `open_config_folder`가 이미 쓰던 것과 같은 패턴(플러그인의 `Opener` 확장 트레잇을 Rust에서 직접 호출) 재사용 — `src-tauri/src/lib.rs`에 `open_url(app, url)` 커맨드를 새로 만들어 `app.opener().open_url(url, None)`을 직접 부름. 플러그인 자체의 `open_url` IPC 커맨드(ACL 스코프 체크 있음)를 우회하므로 새 npm 의존성도, 스코프 설정도 필요 없음 — `capabilities/default.json`에 `"opener:allow-open-url"`만 (기존 `"opener:allow-open-path"`와의 일관성 차원에서) 추가.
+
+**검증**: 헤드리스 Chrome으로 실제 클릭을 재현해서 확인 — `https://example.com`/`mailto:test@example.com` 링크 클릭은 `preventDefault` 호출됨 + `lm-external-link` 이벤트가 정확한 `url`로 발생, `#heading-id` 앵커 링크 클릭은 둘 다 발생 안 함(기존 그대로) — 실측으로 세 가지 케이스 모두 확인. `cargo fmt/check/clippy/test`(13+4개) + 프론트 `lint/typecheck/build/test`(30개) 전부 통과.
+
+## 버그 수정(사용자 리포트): Open/drag&drop으로 연 문서가 타이틀바에 파일명이 안 붙음
+
+"파일 탐색기에서 바로 문서를 열면 타이틀바에 'LightMark - 파일명' 이런 식으로 표시되는데, 먼저 앱을 실행한 후 Open이나 file drop으로 문서를 열면 그대로 'LightMark'만 표시돼."
+
+**원인**: `src-tauri/src/lib.rs`의 `open_window()`가 창을 **생성하는 시점**에만 파일 유무로 제목을 정함(`"LightMark — {파일명}"` 또는 `"LightMark"`) — 더블클릭/CLI/"Open With"는 항상 새 창을 만드니 이 경로를 타지만, 툴바 Open/drag&drop은 결정 #1대로 "그 창 내용만 교체"라 창을 다시 만들지 않고, 그러면 창 생성 시점에 정해진 제목을 그 뒤로 아무도 안 바꿔줌.
+
+**수정**: `main.ts`의 `loadFile()`(모든 문서 로드 경로 — 초기 `?file=`, Open 버튼, drag&drop, live reload, Apply 재렌더까지 전부 이걸 거침)에 `backend.setTitle(`${APP_NAME} — ${name}`)` 호출 추가(`core/appInfo.ts`의 `APP_NAME` 재사용, `open_window()`와 동일한 "—" 포맷). `BackendApi`에 `setTitle(title): Promise<void>`를 `openUrl`과 같은 이유로 **필수** 메서드로 추가(Web/Dev는 `document.title`, Tauri는 `getCurrentWindow().setTitle()`). Tauri 쪽은 새 커맨드가 아니라 `core:window` API를 프론트에서 직접 호출 — 다만 이 API는 `core:window`의 `default` 퍼미션 세트에 안 들어있어서(`allow-title`은 읽기용으로 들어있지만 `allow-set-title`은 없음, 스키마로 직접 확인) `capabilities/default.json`에 `"core:window:allow-set-title"` 추가 필요.
+
+**검증**: `cargo fmt/check/clippy/test`(13+4개) + 프론트 `lint/typecheck/build/test`(30개) 전부 통과. `npm run tauri dev`로 ACL 권한 오류 없이 정상 기동 확인(퍼미션 식별자 자체는 `cargo check`의 ACL 스키마 검증도 통과).
+
+**후속 리포트(사용자): "링크 기능은 잘 동작하는데, 타이틀바에 파일명은 여전히 동작하지 않아."** — `tauri dev` 완전 재시작 후에도 재현("다시 껐다 켜봤는데 여전히 안 돼")돼서 스테일 빌드 가능성은 배제.
+
+**직접 재현(추측 아님)**: `main.ts`에 `setTimeout`으로 "이미 떠 있는 빈 창에 Open/drop이 일어나는 것"을 그대로 시뮬레이션(`loadFile()` 직접 호출, GUI 조작 불필요)하고 `platform/tauri.ts`의 `setTitle()`에 임시로 `getCurrentWindow().title()` 되읽기 로그를 추가해서 확인(둘 다 확인 후 원복, `git diff` 없음) — **`setTitle()` 호출은 성공하고, `title()`로 되읽으면 정확히 "LightMark — SIMULATED-OPEN.md"로 바뀐 게 확인됨.** 즉 우리 쪽 IPC 호출/퍼미션/API 사용법은 전부 정확하고, Tauri의 내부 상태(그리고 `tao`의 GTK `Window::title()`이 직접 GTK 위젯에서 읽어오는 라이브 값이라 캐시 문제도 아님)까지는 확실히 갱신됨.
+
+**결론(WebSearch로 확인): Tauri 자체의 알려진 업스트림 버그.** [tauri-apps/tauri#13749](https://github.com/tauri-apps/tauri/issues/13749) "Window setTitle does not update header bar on Wayland" — Linux/Wayland(GTK 헤더바 환경)에서 `setTitle()`을 호출하면 내부 상태와 taskbar는 정확히 갱신되는데 **화면에 보이는 GTK 헤더바 텍스트만 리페인트가 안 되는** 버그. 지금 재현한 증상(내부 상태/`title()` 읽기는 맞는데 실제 창 헤더바만 안 바뀜)과 정확히 일치. 우리 구현(퍼미션, `setTitle` 호출, `loadFile()` 배선)은 전부 정확함 — GTK/Wayland에서의 리페인트 자체가 Tauri/tao 레벨 버그.
+
+**사용자 결정: "알려진 한계로 받아들이고 넘어가기"**(인쇄 페이지 잘림 버그 때와 동일한 결정) — 추가 코드 변경 없음, upstream 이슈가 고쳐지면 자연히 해결될 사안으로 남겨둠.
+
+## 버전 0.1.1 + Linux 재패키징 (신규)
+
+"버그 수정으로 버전 증가시키고 (0.1.1) 우분투용 패키징해줘." — 위 하이퍼링크/타이틀바 버그 수정 반영한 패치 릴리스.
+
+**버전 올린 곳**: `package.json`(루트)/`frontend/package.json`(둘 다 `npm install --package-lock-only`로 `package-lock.json` 동기화까지)/`src-tauri/tauri.conf.json`(실제 패키징에 쓰이는 버전)/`src-tauri/Cargo.toml` — 전부 0.1.0 → 0.1.1. `README.md`의 "버전" 표기와 설치 예시 명령의 `.deb` 파일명도 같이 갱신. `backend/Cargo.toml`은 앱 버전과 무관한 내부 라이브러리 크레이트라 안 건드림.
+
+**빌드+설치 검증**: `cargo check/fmt/clippy/test`(13+4개) + 프론트 `lint/typecheck/test`(30개) 전부 통과 확인(`lightmark v0.1.1`로 컴파일되는 것도 확인) 후 `npm run tauri build`로 `LightMark_0.1.1_amd64.deb`(deb 메타데이터도 `Version: 0.1.1`로 정확히 반영) 생성. 기존에 설치돼 있던 0.1.0을 `sudo apt install`로 **업그레이드**(0.1.0 → 0.1.1, 신규 설치 아님) 성공 확인, 실행해서 `busctl`로 `dev.lightmark.viewer` D-Bus 등록까지 재확인 후 종료.
+
+## 테마 8종 추가 (신규)
+
+"지금 기본 제공 theme이 github_light, github_dark 두 가지인데, 유명한 몇 가지를 더 추가 조사해봐" → 유명한 에디터 테마들의 실제 팔레트를 조사(Dracula/Nord/Solarized/One Dark·Light/Monokai/Gruvbox/Catppuccin/Tokyo Night/Rosé Pine, Shiki가 이미 전부 번들하고 있어서 후보로 고르면 추가 의존성 없이 코드 하이라이팅까지 공짜로 따라옴)해서 1차 추천 목록(Dracula, Nord, Solarized L/D, One Dark/Light, Gruvbox L/D — 인지도+라이트/다크 대칭 기준) 제시 → "1차 추천 후보들 추가해줘"로 8개 전부 추가.
+
+- **`frontend/src/core/theme.ts`**: `GITHUB_LIGHT`/`GITHUB_DARK` 옆에 8개 `ThemeTokens` 상수 추가(각 테마 공식 팔레트에서 가져온 값 — Dracula의 Comment/Current Line, Nord의 Polar Night 단계, Solarized의 base0x, One Dark/Light 공식 gutter/comment 색, Gruvbox의 bg1/gray). `resolveThemeTokens`를 `isLightTheme` 하나로 분기하던 이진 로직에서 `THEMES: Record<string, ThemeTokens>` 조회 테이블로 바꾸고, `isLightTheme`도 `LIGHT_THEMES` Set 기반으로 일반화(라이트 4종: github-light/solarized-light/one-light/gruvbox-light-medium, 나머지는 전부 다크 취급 - 인식 안 되는 값도 기존과 동일하게 다크로 폴백). `core/lazy/mermaid.ts`의 `mermaidThemeOf`는 이 `isLightTheme`를 그대로 재사용하는 구조라 수정 없이 새 테마들의 mermaid 라이트/다크 자동 판단까지 그대로 적용됨.
+- **테마 이름을 Shiki 내장 테마 ID와 정확히 일치**시킴(`dracula`, `nord`, `solarized-light`/`solarized-dark`, `one-light`/`one-dark-pro`, `gruvbox-light-medium`/`gruvbox-dark-medium`) — M4 때부터의 설계(`theme` 값 = Shiki 테마 이름)를 그대로 유지, 실제로 Shiki의 `codeToHtml`을 10개 테마 전부에 대해 직접 호출해서 에러 없이 처리되는 것 확인(오타 없음 실측 확인, 단순 문자열 비교라 유닛 테스트로는 못 잡는 부분).
+- `docs/CONFIG_SPEC.md`에 `theme` 필드의 전체 허용값 목록을 새로 추가(지금까지 `mermaidTheme`만 이런 설명이 있고 `theme` 자체는 스키마 예시에만 있었음 — 이번에 값이 10개로 늘어난 김에 정리).
+
+검증: `frontend/src/core/theme.test.ts`에 테마별 `computeCssVars`/`isLightTheme` 테스트 추가(30개 → 49개). 프론트 `lint`/`typecheck`/`build`/`test` 전부 통과, Shiki 10개 테마 직접 호출 확인, 백엔드는 무관해 재확인만(`cargo fmt/test`, 변화 없음).
+
+## 버전 0.2.0 + Linux 재패키징 (신규)
+
+"이건 버전 0.2.0. 패키징 해줘." — 테마 8종 추가는 버그 수정이 아니라 기능 추가라 마이너 버전을 올림(0.1.1 → 0.2.0).
+
+**버전 올린 곳**: 0.1.1 때와 동일한 파일들(`package.json`/`frontend/package.json`/`src-tauri/tauri.conf.json`/`src-tauri/Cargo.toml` + 각 `package-lock.json`은 `npm install --package-lock-only`로 동기화) + `README.md`(버전 표기, 설치 예시 `.deb` 파일명). 이번엔 README의 "테마" 기능 설명과 `config.json` 필드 표의 `theme` 허용값도 같이 갱신(2종 → 10종으로 늘어난 뒤로 안 고쳤던 부분 — 문서 동기화 점검 겸함).
+
+**빌드+설치 검증**: `cargo check/fmt/clippy/test`(13+4개, `lightmark v0.2.0` 확인) + 프론트 `lint/typecheck/build/test`(49개) 전부 통과 후 `npm run tauri build`로 `LightMark_0.2.0_amd64.deb`(`Version: 0.2.0` 확인) 생성. 기존 0.1.1 설치본을 `sudo apt install`로 업그레이드 성공, 실행해서 `busctl`로 `dev.lightmark.viewer` 등록까지 재확인 후 종료 — 새로 추가된 테마 10종이 포함된 첫 배포 빌드.
+
+## README.md에 Linux 업데이트 방법 추가 (신규)
+
+"ubuntu에서 deb 업데이트 방법은?" — 패키지 이름(`light-mark`)이 같으면 apt가 새 `.deb`를 자동으로 업그레이드로 처리한다는 것(삭제 후 재설치 불필요, 직접 0.1.0→0.1.1→0.2.0으로 검증했던 방식 그대로)을 설명 → "응 추가해줘"로 `README.md`의 Linux 설치 섹션에 "4. 업데이트"(`sudo apt install ./LightMark_새버전_amd64.deb` + `dpkg -l light-mark`로 버전 확인) 항목 신설, 기존 "제거" 항목은 5번으로 밀림.
+
 ## 다음에 할 일 (사용자 지정 대기)
 
 **진짜 남은 것:**
@@ -707,7 +781,7 @@ Ubuntu로 돌아온 뒤 실제 패키징 착수 전에 확인해야 할 것들�
 **`?file=` 리로드 안전성도 실기 확인 완료.** CLI 재실행으로 창에 파일(PRD.md)을 연 뒤 그 창에서 다른 파일(ARCHITECTURE.md)로 전환, `tauri dev`가 떠 있는 상태에서 프론트 소스를 저장해 Vite 전체 리로드를 유발 → 리로드 후 PRD.md가 되살아나지 않고 빈 화면(드롭 안내)으로 남는 것 확인(`history.replaceState`가 `?file=`을 즉시 지워서 리로드 시 재실행되지 않는다는 설계 의도가 실제로 동작함).
 - **macOS 전용 코드 경로 실기 확인**: `ExitRequested`(마지막 창 닫아도 프로세스 생존 — `ps aux` 확인), `Reopen`(창 없을 때 Dock 클릭 시 새 창), Open 다이얼로그 `set_parent`(창 2개 중 포커스된 창에 정확히 시트로 붙음) **3가지는 `npm run tauri dev`로 실기 확인 완료** — 전부 의도대로 동작. `Opened`(더블클릭/파일 연결/Open With)는 버그를 발견/수정하고 재확인까지 완료 — 아래 "실기 검증" 다음의 "버그 수정(콜드스타트)" 참고.
 - **drag&drop 다중 파일 동작의 Windows 실기 확인**: Linux는 사용자가 직접 손으로 확인 완료(바로 아래 "종결된 것" 참고). Windows는 아직 한 번도 테스트한 적 없음 — Windows로 넘어가면 확인.
-- **M8(패키징 및 배포) — 남은 건 실측/Windows뿐**: macOS `.app`/`.dmg`, Linux `.deb` 둘 다 빌드+실기 확인 완료(위 "Linux 패키징 준비"/"문제 해결" 참고). 릴리스 빌드 시작 시간/메모리 실측(<1s/<30MB)은 두 플랫폼 다 아직 미착수. Windows는 패키징 자체를 아직 시작 안 함.
+- **M8(패키징 및 배포) — 남은 건 Windows뿐**: macOS `.app`/`.dmg`, Linux `.deb` 둘 다 빌드+실기 확인 완료(위 "Linux 패키징 준비"/"문제 해결" 참고). 성능 실측은 "충분히 좋다"는 사용자 판단으로 생략 확정(위 "성능 실측" 참고). Windows는 크로스 빌드를 시도하려다 사용자가 취소 — 실제 Windows 머신에서 네이티브로 빌드해야 함(위 "Windows 빌드 조사" 참고, 준비사항 체크리스트 이미 전달함).
 
 **종결된 것 (참고용, 더 이상 진행 안 함):**
 - M7(TOC Toggle/Zoom/About) — 전부 완료 및 사용자 확인.
@@ -719,3 +793,5 @@ Ubuntu로 돌아온 뒤 실제 패키징 착수 전에 확인해야 할 것들�
 - **drag&drop 다중 파일(Linux)**: 사용자가 직접 손으로 확인 완료 — 이미 열려있는 창에 드롭한 경우와 빈 창에 드롭한 경우 둘 다 문제없음("둘 다 확인했어, 문제없어"). 참고로 리눅스는 `PristineWindow` 재사용 로직 자체가 `cfg!(target_os = "macos")`로 비활성화돼 있어서, macOS에서 발견됐던 그 레이스(빈 창에 드롭 시 자기 자신을 재사용해버리는 버그)는 애초에 구조적으로 재현될 수 없는 조건이었음 — 이번 확인은 그 전제하에 "다중 파일 drag&drop 메커니즘 자체가 리눅스에서 잘 동작하는지"를 실기로 처음 검증한 것.
 - **Linux 패키징(M8) + dock 아이콘**: `.deb` 빌드 → 메타데이터/바이너리 이름/dock 아이콘 문제 3가지 발견 → 전부 수정 → 재빌드 → 사용자가 실제 설치해서 "모두 정상" 확인(위 "첫 deb 빌드"/"문제 해결" 참고). dev 모드에서 오래 보류돼 있던 dock 아이콘 미표시 문제는 실제 패키징 경로에서는 재현되지 않는 것으로 결론.
 - **라이선스 호환성 검토 + THIRD-PARTY-NOTICES**: 662개 의존성 전수 검토, GPL/AGPL/LGPL 없음 확인, 실제 라이선스 파일에서 추출한 텍스트로 `THIRD-PARTY-NOTICES.md` 생성 완료(위 "라이선스 호환성 검토" 참고). `.deb` 안에 포함시킬지는 **"그럴 필요 없어"로 확정** — 저장소에만 두는 현재 상태 유지.
+- **하이퍼링크 외부 열기**: 사용자가 실제 앱에서 확인 완료("링크 기능은 잘 동작하는데" — 위 "버그 수정: 문서 내 하이퍼링크" 참고).
+- **타이틀바 파일명 표시**: 구현은 정확하나(직접 재현으로 `setTitle()` 성공 + `title()` 읽기로 확인됨) Tauri 자체의 Linux/Wayland 업스트림 버그([#13749](https://github.com/tauri-apps/tauri/issues/13749) — 헤더바 텍스트 리페인트 안 됨)로 화면에 안 보임 — 사용자가 "알려진 한계로 받아들이고 넘어가기"로 확정(위 "버그 수정: Open/drag&drop으로 연 문서" 참고).

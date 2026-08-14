@@ -2,7 +2,7 @@
 
 **Fast. Lightweight. Focused.**
 
-- **버전**: 0.1.0
+- **버전**: 0.2.0
 - **개발자**: Yonghee Yu
 
 ## 소개
@@ -25,7 +25,7 @@ LightMark는 크로스 플랫폼 Markdown **뷰어**입니다. 편집기가 아�
 - **목차(TOC)**: 왼쪽 사이드바, 토글·크기 조절 가능, 계층 구조, 현재 섹션 강조
 - **Breadcrumb**: 스크롤 위치에 따라 뷰어 상단에 토스트로 잠깐 표시
 - **다이어그램 / 수식 / 문법 강조**: Mermaid, KaTeX, Shiki (문서에 실제로 쓰일 때만 지연 로딩)
-- **테마**: 내장 `github-light`/`github-dark` + `customCss`로 자유롭게 커스터마이즈
+- **테마**: 내장 10종(GitHub Light/Dark, Dracula, Nord, Solarized Light/Dark, One Light/Dark, Gruvbox Light/Dark) + `customCss`로 자유롭게 커스터마이즈
 - **폰트**: 본문/코드 폰트 각각 지정
 - **Zoom**: 50~200% 배율 조절, 툴바 버튼·단축키로 조절, 상태바에 현재 배율 표시
 - **뷰어 폭 제한**: `config.json`의 `viewerMaxWidth`로 읽기 컬럼 폭 지정(기본은 창 전체 폭)
@@ -54,10 +54,15 @@ LightMark는 크로스 플랫폼 Markdown **뷰어**입니다. 편집기가 아�
 1. `.deb` 파일을 받습니다.
 2. 설치:
    ```bash
-   sudo apt install ./LightMark_0.1.0_amd64.deb
+   sudo apt install ./LightMark_0.2.0_amd64.deb
    ```
 3. 앱 목록(GNOME Activities/Dash 등)에서 **LightMark**를 실행하거나, 터미널에서 `lightmark`로 실행합니다.
-4. 제거: `sudo apt remove light-mark`
+4. 업데이트: 새 버전의 `.deb`를 받아서 같은 명령으로 다시 설치하면 됩니다. 패키지 이름(`light-mark`)이 같아서 apt가 자동으로 업그레이드로 처리합니다(삭제 후 재설치 불필요).
+   ```bash
+   sudo apt install ./LightMark_새버전_amd64.deb
+   ```
+   설치된 버전 확인: `dpkg -l light-mark`
+5. 제거: `sudo apt remove light-mark`
 
 AppImage/rpm은 현재 배포 대상이 아닙니다(deb 전용).
 
@@ -87,7 +92,7 @@ LightMark는 그래픽 설정 화면이 없습니다 — `config.json` 파일을
 
 | 필드 | 타입 | 기본값 | 설명 |
 |---|---|---|---|
-| `theme` | string | `"github-light"` | 내장 테마: `"github-light"` \| `"github-dark"` |
+| `theme` | string | `"github-light"` | 내장 테마: `"github-light"` \| `"github-dark"` \| `"dracula"` \| `"nord"` \| `"solarized-light"` \| `"solarized-dark"` \| `"one-light"` \| `"one-dark-pro"` \| `"gruvbox-light-medium"` \| `"gruvbox-dark-medium"` |
 | `customCss` | string | `""` | 테마 위에 덧씌울 커스텀 CSS |
 | `fontFamily` | string | `"sans-serif"` | 본문 폰트 |
 | `codeFontFamily` | string | `"monospace"` | 코드 폰트 |

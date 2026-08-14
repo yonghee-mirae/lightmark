@@ -1,4 +1,4 @@
-// Tauri mode: @tauri-apps/api invoke()/listen() bridge to the 8 IPC commands (docs/IPC_SPEC.md),
+// Tauri mode: @tauri-apps/api invoke()/listen() bridge to the 9 IPC commands (docs/IPC_SPEC.md),
 // each a thin binding in src-tauri/src/lib.rs delegating to the `backend` Rust crate. This is
 // the ONLY file allowed to import @tauri-apps/* (docs/ARCHITECTURE.md "Tauri Rules", enforced by
 // ESLint's no-restricted-imports override for this path).
@@ -6,6 +6,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { BackendApi, BackendCapabilities, OpenedFile, Unwatch } from './backend';
 import type { Config } from '../types/config';
 
@@ -72,5 +73,25 @@ export class TauriBackend implements BackendApi {
   // multi-select rule).
   openWindow(path: string): Promise<void> {
     return invoke('open_new_window', { path });
+  }
+
+  // A hyperlink inside a rendered document (lm-viewer.ts's 'lm-external-link' event) - opens in
+  // the OS default browser instead of navigating this window's own webview away from LightMark
+  // (user report). Bypasses tauri-plugin-opener's own `open_url` IPC command (and its ACL scope
+  // machinery) the same way open_config_folder already bypasses `open_path` - a thin src-tauri
+  // command calling the `Opener` extension trait directly.
+  openUrl(url: string): Promise<void> {
+    return invoke('open_url', { url });
+  }
+
+  // Bug report: only a window created with a file already in its URL (double-click/CLI/"Open
+  // With") ever got "LightMark — {name}" as its title - src-tauri/src/lib.rs's open_window() sets
+  // that at creation time, but the toolbar Open button and drag&drop just load content into the
+  // current window without ever touching it, leaving it on the bare "LightMark" the window was
+  // created with. A direct `core:window` API call, not a custom src-tauri command - no Rust
+  // changes needed, just `core:window:allow-set-title` in capabilities/default.json (window title
+  // isn't part of that plugin's own `default` permission set, unlike most of the rest of it).
+  setTitle(title: string): Promise<void> {
+    return getCurrentWindow().setTitle(title);
   }
 }

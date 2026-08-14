@@ -45,4 +45,14 @@ export class DevBackend implements BackendApi {
   openConfigFolder(): Promise<void> {
     return Promise.reject(new Error('openConfigFolder is not supported in Dev mode'));
   }
+
+  openUrl(url: string): Promise<void> {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return Promise.resolve();
+  }
+
+  setTitle(title: string): Promise<void> {
+    document.title = title;
+    return Promise.resolve();
+  }
 }

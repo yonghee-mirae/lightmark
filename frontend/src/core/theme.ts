@@ -28,21 +28,52 @@ const GITHUB_DARK: ThemeTokens = {
   accent: '#2f81f7',
 };
 
-// Built-in themes only (docs/PLAN.md M3: "github-light, github-dark 2종").
 const GITHUB_LIGHT: ThemeTokens = { bg: '#ffffff', fg: '#1f2328', border: '#d0d7de', muted: '#656d76', accent: '#0969da' };
+const DRACULA: ThemeTokens = { bg: '#282a36', fg: '#f8f8f2', border: '#44475a', muted: '#6272a4', accent: '#bd93f9' };
+const NORD: ThemeTokens = { bg: '#2e3440', fg: '#d8dee9', border: '#3b4252', muted: '#4c566a', accent: '#88c0d0' };
+const SOLARIZED_DARK: ThemeTokens = { bg: '#002b36', fg: '#839496', border: '#073642', muted: '#586e75', accent: '#268bd2' };
+const SOLARIZED_LIGHT: ThemeTokens = { bg: '#fdf6e3', fg: '#657b83', border: '#eee8d5', muted: '#93a1a1', accent: '#268bd2' };
+const ONE_DARK: ThemeTokens = { bg: '#282c34', fg: '#abb2bf', border: '#3a3f4b', muted: '#5c6370', accent: '#61afef' };
+const ONE_LIGHT: ThemeTokens = { bg: '#fafafa', fg: '#383a42', border: '#e5e5e6', muted: '#a0a1a7', accent: '#4078f2' };
+const GRUVBOX_DARK: ThemeTokens = { bg: '#282828', fg: '#ebdbb2', border: '#3c3836', muted: '#928374', accent: '#83a598' };
+const GRUVBOX_LIGHT: ThemeTokens = { bg: '#fbf1c7', fg: '#3c3836', border: '#ebdbb2', muted: '#928374', accent: '#076678' };
 
-// Anything other than the one known light theme falls back to dark tokens - this covers an
-// unrecognized/custom `theme` value (typo, future theme not yet added here) the same way as a
-// genuinely dark theme, rather than silently landing on light. Exported so other consumers that
-// need the same "light vs. dark" call for a theme name (e.g. Mermaid's own theme names, which
-// don't line up with ours - see core/lazy/mermaid.ts) share this one answer instead of each
-// re-deriving their own theme allowlist and risking disagreeing with this fallback.
+// Theme name -> tokens (docs/CONFIG_SPEC.md lists the full set). Keys match Shiki's own bundled
+// theme ids exactly (docs/PLAN.md M4: Shiki's built-in theme names already line up with ours for
+// github-light/dark, so `config.theme` doubles as the syntax-highlighting theme with zero mapping
+// - same story for every theme added here). Anything not in this map (a typo, a future theme not
+// yet added) falls back to GITHUB_DARK, same as it always has.
+const THEMES: Record<string, ThemeTokens> = {
+  'github-light': GITHUB_LIGHT,
+  'github-dark': GITHUB_DARK,
+  dracula: DRACULA,
+  nord: NORD,
+  'solarized-light': SOLARIZED_LIGHT,
+  'solarized-dark': SOLARIZED_DARK,
+  'one-light': ONE_LIGHT,
+  'one-dark-pro': ONE_DARK,
+  'gruvbox-light-medium': GRUVBOX_LIGHT,
+  'gruvbox-dark-medium': GRUVBOX_DARK,
+};
+
+// The light-side half of THEMES above - everything else (including anything not in THEMES at
+// all) is treated as dark. Exported so other consumers that need the same "light vs. dark" call
+// for a theme name (e.g. Mermaid's own theme names, which don't line up with ours - see
+// core/lazy/mermaid.ts) share this one answer instead of each re-deriving their own theme
+// allowlist and risking disagreeing with this fallback.
+const LIGHT_THEMES = new Set([
+  'github-light',
+  'solarized-light',
+  'one-light',
+  'gruvbox-light-medium',
+]);
+
 export function isLightTheme(theme: string): boolean {
-  return theme === 'github-light';
+  return LIGHT_THEMES.has(theme);
 }
 
 function resolveThemeTokens(theme: string): ThemeTokens {
-  return isLightTheme(theme) ? GITHUB_LIGHT : GITHUB_DARK;
+  return THEMES[theme] ?? GITHUB_DARK;
 }
 
 // System font stack first; a configured custom name is prepended, quoted if it contains a space

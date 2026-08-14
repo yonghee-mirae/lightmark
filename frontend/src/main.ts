@@ -8,11 +8,17 @@ import { createBackend } from './platform/backend';
 import { renderMarkdown } from './core/markdown';
 import { buildToc } from './core/toc';
 import { applyTheme } from './core/theme';
+import { APP_NAME } from './core/appInfo';
 import { DEFAULT_CONFIG, configsEqual } from './types/config';
 import type { Config } from './types/config';
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from './components/lm-toolbar';
 import type { LmToolbar } from './components/lm-toolbar';
-import type { LmViewer, FileDropDetail, ActiveHeadingDetail } from './components/lm-viewer';
+import type {
+  LmViewer,
+  FileDropDetail,
+  ActiveHeadingDetail,
+  ExternalLinkDetail,
+} from './components/lm-viewer';
 import type { LmStatusbar } from './components/lm-statusbar';
 import type { LmToc, TocSelectDetail } from './components/lm-toc';
 import type { LmBreadcrumb } from './components/lm-breadcrumb';
@@ -154,6 +160,11 @@ function loadFile(name: string, content: string): void {
   toolbar.setHasDocument(true);
   hasDocument = true;
   updateTocDisplay();
+  // Bug report: a window created with a file already in its URL (double-click/CLI/"Open With")
+  // gets this title from src-tauri's open_window() at creation time, but the toolbar Open button
+  // and drag&drop just load content into the current window without ever touching its title -
+  // set it here too so every path converges on the same title (same format as open_window()'s).
+  void backend.setTitle(`${APP_NAME} — ${name}`);
 }
 
 // Live reload's watch state. Only ever one at a time - LightMark shows one document.
@@ -270,6 +281,14 @@ viewer.addEventListener('lm-active-heading', (event) => {
   const { id } = (event as CustomEvent<ActiveHeadingDetail>).detail;
   toc.setActive(id);
   breadcrumb.setActive(id);
+});
+
+// A hyperlink in the document (anything other than a same-document #heading anchor, which
+// lm-viewer.ts leaves untouched) - open externally rather than navigating this window away from
+// LightMark (user report).
+viewer.addEventListener('lm-external-link', (event) => {
+  const { url } = (event as CustomEvent<ExternalLinkDetail>).detail;
+  void backend.openUrl(url);
 });
 
 // A TOC click always focuses that heading immediately, even in the one case scroll-driven

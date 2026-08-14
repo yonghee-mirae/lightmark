@@ -274,6 +274,18 @@ fn open_config_folder(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Hyperlinks inside a rendered document (user report: they were navigating the app's own webview
+/// away from LightMark instead of opening in the OS default browser) - `#heading` anchors stay
+/// in-app (lm-viewer.ts never calls this for those), everything else routes here. Same
+/// direct-`Opener`-extension pattern as `open_config_folder` above rather than the plugin's own
+/// `open_url` IPC command, so no extra ACL scope wiring is needed beyond the identifier below.
+#[tauri::command]
+fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    app.opener()
+        .open_url(url, None::<String>)
+        .map_err(|e| e.to_string())
+}
+
 /// Lets the frontend ask for another window with a specific file (docs/PLAN.md "멀티 윈도우/
 /// 인스턴스 지원") - used when several files are dropped onto one window at once: the first
 /// replaces that window's content in place (already handled purely in the frontend), the rest
@@ -356,6 +368,7 @@ pub fn run() {
             reload_config,
             open_config_folder,
             open_new_window,
+            open_url,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

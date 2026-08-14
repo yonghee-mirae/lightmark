@@ -35,6 +35,18 @@ export interface BackendApi {
   readConfig(): Promise<Config>;
   reloadConfig(): Promise<Config>;
   openConfigFolder(): Promise<void>;
+  // A hyperlink inside a rendered document (lm-viewer.ts's 'lm-external-link' event) - opens in
+  // the OS default browser (Tauri) / a new tab (Web/Dev), never navigating LightMark's own
+  // window/webview away from the app. Not Tauri-only like the methods below, so it's a required
+  // method with a real implementation on every backend rather than optional.
+  openUrl(url: string): Promise<void>;
+  // Window/tab title (bug report: only a window created with a file already in its URL - the
+  // double-click/CLI/"Open With" case - ever got "LightMark — {name}"; the toolbar Open button and
+  // drag&drop just load content into the current window without ever touching its title, leaving
+  // it stuck on the bare "LightMark" the window was created with). main.ts calls this from
+  // loadFile() on every document load, so all paths converge on the same title. Not Tauri-only
+  // (Web/Dev have a real equivalent - the browser tab title), so required like openUrl above.
+  setTitle(title: string): Promise<void>;
   // Optional: only TauriBackend implements these - Web/Dev have no concept of a native OS window
   // to drop a file onto or open another instance of (docs/PLAN.md "멀티 윈도우/인스턴스 지원").
   // Each window (including the very first one) gets its initial file via its own `?file=` URL

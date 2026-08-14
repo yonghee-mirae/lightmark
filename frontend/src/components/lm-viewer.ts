@@ -14,6 +14,10 @@ export interface FileDropDetail {
   content: string;
 }
 
+export interface ExternalLinkDetail {
+  url: string;
+}
+
 export interface ActiveHeadingDetail {
   id: string | null;
 }
@@ -50,11 +54,13 @@ export class LmViewer extends HTMLElement {
     this.addEventListener('dragover', this.handleDragOver);
     this.addEventListener('drop', this.handleDrop);
     this.addEventListener('scrollend', this.reconcileActiveHeading);
+    this.addEventListener('click', this.handleLinkClick);
   }
 
   disconnectedCallback(): void {
     this.observer?.disconnect();
     this.removeEventListener('scrollend', this.reconcileActiveHeading);
+    this.removeEventListener('click', this.handleLinkClick);
   }
 
   setContent(html: string, headings: Heading[], options: RenderOptions): void {
@@ -198,6 +204,27 @@ export class LmViewer extends HTMLElement {
     this.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: 'start' });
     this.setActive(this.computeActiveHeadingId());
   }
+
+  // Hyperlinks in the rendered document (user report: they were navigating this webview itself
+  // away from LightMark instead of opening in the OS's default browser). A same-document heading
+  // link (`href="#some-id"`) is left alone - native anchor scroll still applies, same as before.
+  // Anything else (an absolute URL, a bare linkify-autolinked one, a relative path - all render
+  // identically from markdown-it, see core/markdown.ts) is treated as external and handed off via
+  // main.ts instead, which is the only place that knows which BackendApi to call.
+  private handleLinkClick = (event: MouseEvent): void => {
+    const link = (event.target as HTMLElement).closest('a');
+    const href = link?.getAttribute('href');
+    if (!href || href.startsWith('#')) {
+      return;
+    }
+    event.preventDefault();
+    this.dispatchEvent(
+      new CustomEvent<ExternalLinkDetail>('lm-external-link', {
+        bubbles: true,
+        detail: { url: href },
+      }),
+    );
+  };
 
   private handleDragOver = (event: DragEvent): void => {
     event.preventDefault();

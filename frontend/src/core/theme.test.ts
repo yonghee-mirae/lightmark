@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { computeCssVars } from './theme';
+import { computeCssVars, isLightTheme } from './theme';
 import { DEFAULT_CONFIG } from '../types/config';
+
+describe('isLightTheme', () => {
+  it.each(['github-light', 'solarized-light', 'one-light', 'gruvbox-light-medium'])(
+    '%s is light',
+    (theme) => expect(isLightTheme(theme)).toBe(true),
+  );
+
+  it.each([
+    'github-dark',
+    'dracula',
+    'nord',
+    'solarized-dark',
+    'one-dark-pro',
+    'gruvbox-dark-medium',
+    'no-such-theme',
+  ])('%s is not light', (theme) => expect(isLightTheme(theme)).toBe(false));
+});
 
 describe('computeCssVars', () => {
   it('resolves the configured built-in theme', () => {
@@ -12,6 +29,19 @@ describe('computeCssVars', () => {
   it('falls back to github-dark for an unknown theme name', () => {
     const vars = computeCssVars({ ...DEFAULT_CONFIG, theme: 'no-such-theme' });
     expect(vars['--lm-color-bg']).toBe('#0d1117');
+  });
+
+  it.each([
+    ['dracula', '#282a36'],
+    ['nord', '#2e3440'],
+    ['solarized-light', '#fdf6e3'],
+    ['solarized-dark', '#002b36'],
+    ['one-light', '#fafafa'],
+    ['one-dark-pro', '#282c34'],
+    ['gruvbox-light-medium', '#fbf1c7'],
+    ['gruvbox-dark-medium', '#282828'],
+  ])('resolves the %s theme', (theme, bg) => {
+    expect(computeCssVars({ ...DEFAULT_CONFIG, theme })['--lm-color-bg']).toBe(bg);
   });
 
   it('uses a legible muted color distinct from the border color', () => {

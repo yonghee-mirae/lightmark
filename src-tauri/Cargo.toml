@@ -1,6 +1,6 @@
 [package]
 name = "lightmark"
-version = "0.1.0"
+version = "0.2.0"
 description = "Fast, lightweight, focused Markdown viewer."
 authors = ["Yonghee Yu <yonghee.yu@miraeasset.com>"]
 license = "MIT"

@@ -150,6 +150,8 @@ export type Unwatch = () => void;
   - **버그 수정(사용자 리포트): 세로 스크롤이 있으면 resize가 안 되고, 하면 안 된다고 못박은 가로 스크롤바가 생김.** 헤드리스 Chrome(CDP)으로 TOC에 헤딩 200개를 주입해 직접 재현·측정 - 원인은 핸들을 `position: absolute; right: -3px`로 `lm-toc` 자기 경계 밖까지 튀어나오게 배치한 것: `overflow-y: auto`인 요소에서 자식이 박스 밖으로 넘치면 overflow-wrap/word-break 수정 때 겪은 것과 같은 "overflow-x가 암묵적으로 auto가 되는" 계산이 재발동해 진짜 가로 스크롤바가 생기고, 같은 배치 때문에 핸들의 히트 영역이 실제 세로 스크롤바 자리와 겹쳐 클릭이 스크롤바한테 먼저 가로채짐. 수정: `.lm-toc-list`(`flex: 1 1 auto`)와 `.lm-toc-resize-handle`(`flex: 0 0 6px`)을 `lm-toc { display: flex }`의 서로 겹칠 수 없는 형제로 재배치.
   - **2차 발견(같은 헤드리스 테스트): flex/grid item의 `min-height: auto` 함정.** 위 구조로 바꾸자 이번엔 `lm-toc` 자체 높이가 그리드 셀 고정 높이 대신 컨텐츠 전체 높이로 늘어나 있었음(스크롤 대신 화면 전체를 밀어버림) - `overflow-y: auto`를 `lm-toc` 자신에 걸면 자동 최소 크기가 0이 되는데, 스크롤을 자식으로 옮기며 `lm-toc`가 그 계산 혜택을 못 받게 된 것. `lm-toc`에 `min-height: 0` 명시로 수정. 헤드리스 Chrome으로 가로 스크롤 없음(`scrollWidth === clientWidth`)/세로 스크롤 있어도 핸들이 정확히 히트됨(`elementFromPoint`)을 재검증. 사용자가 실제 앱에서 최종 확인("좋아. 모두 해결됐네.").
 
+- **버그 수정(사용자 리포트): 문서 내 하이퍼링크가 앱 창 안에서 열림.** "문서 내 하이퍼링크를 클릭하면 현재 뷰어 창 안에서 열리도록 돼 있는데, 외부 앱(브라우저 등)으로 연결되도록 해줘. 문서 내 heading 링크일 경우에는 뷰어 안에서 이동하도록 두고." `lm-viewer.ts`엔 `<a>` 클릭 핸들러 자체가 없어서(마크다운도 외부/내부 링크를 구분 안 하고 동일하게 렌더링) 아무것도 안 막아 Tauri webview가 그 URL로 자기 자신을 네비게이션해버렸던 게 원인. 수정: 클릭 시 `href`가 `#`로 시작하면 그대로 두고(기존 앵커 스크롤 유지), 그 외는 `preventDefault` + `lm-external-link` 이벤트를 dispatch해 `main.ts`가 새로 추가된 필수 `BackendApi.openUrl(url)`을 호출하도록 배선(`onFileDrop`/`openWindow`와 달리 Web/Dev도 `window.open`으로 의미 있게 구현 가능해 optional로 안 둠). Tauri 쪽은 `open_config_folder`와 같은 패턴으로 새 커맨드 `open_url`을 만들어 `tauri-plugin-opener`의 `Opener` 확장 트레잇을 직접 호출(플러그인 자체 IPC 커맨드의 ACL 스코프 체크를 우회 - 새 npm 패키지도 불필요), `capabilities/default.json`에 `opener:allow-open-url` 추가. 헤드리스 Chrome으로 외부 링크(`preventDefault`+이벤트 발생)/앵커 링크(둘 다 안 함) 클릭을 실제로 재현해서 검증.
+
 **검증**: `docs/PRD.md`를 열어 렌더/TOC 계층/스크롤 시 breadcrumb 갱신 확인. 10k줄 생성 문서에서 파싱+렌더 < 300ms (`performance.now()` 계측, `lm-statusbar`에 표시 - 원래 dev 전용이었으나 macOS 세션에서 사용자 요청으로 항상 표시로 변경, `docs/UI_SPEC.md` 참고). Vitest로 toc/breadcrumb/slug 단위 테스트. 추가로: 느린/빠른 스크롤 양방향, 문서 맨 위/아래 경계, 좁은 폭에서 breadcrumb 축약을 수동 확인.
 
 ---
@@ -178,6 +180,7 @@ export type Unwatch = () => void;
   - 수정: `html, body`에 `-webkit-font-smoothing: antialiased` + `-moz-osx-font-smoothing: grayscale` — 앱 전체에 상속으로 한 번에 적용. Chromium/Firefox는 대부분 무시하므로 회귀 위험 없음.
   - **알려진 업스트림 이슈, 참고용**: [tauri-apps/tauri#14286](https://github.com/tauri-apps/tauri/issues/14286) — WebKitGTK(Linux)가 지정된 font-weight보다 약 +100 무겁게 렌더링하는, 아직 미해결인 업스트림 버그(computed style은 정상인데 실제 래스터라이즈만 두꺼움 — 우리가 겪은 증상과 일치). 이 이슈와 [관련 정리 글](https://medium.com/@dasunnimantha777/fonts-render-too-bold-in-rust-tauri-wails-on-linux-a-webkitgtk-bug-and-how-to-fix-it-8b6a0b27b613)은 둘 다 "스크롤/overflow/compositing과 무관하다"고 명시하는데, 우리가 관찰한 "TOC에 스크롤바가 생길 때만 굵어짐" 현상은 여기 안 나온 별개 각도라 완전히 설명되진 않음. 이 글이 제시하는 "정식" 해결법은 weight 300 폰트를 직접 번들링해 `@font-face`로 등록하고 일부러 더 가벼운 weight를 지정해 +100 오프셋을 상쇄하는 것인데, 이건 `CLAUDE.md`의 "웹폰트 번들 금지" 원칙과 충돌해서 적용 안 함 — 지금은 `-webkit-font-smoothing`만으로 사용자가 정상으로 확인해서 여기서 멈춤. 증상이 재발하면 이 트레이드오프를 다시 검토.
 - **개선(사용자 요청): 기본 config 값 변경.** `fontFamily`/`codeFontFamily` 기본값을 `Pretendard`/`JetBrains Mono`(둘 다 이 환경엔 설치돼 있지 않음, 위 WebKitGTK 폰트 굵기 조사에서 `fc-match`로 확인)에서 제네릭 CSS 키워드 `sans-serif`/`monospace`로 변경 — `buildFontStack`이 이미 시스템 폰트 스택 뒤에 붙이는 구조라 동작은 그대로(`sans-serif, system-ui, ...`처럼 중복되지만 해롭지 않음), 설치돼 있을 필요가 없는 값으로 바뀐 것뿐. `printUseLightTheme` 기본값도 `false`→`true`로 변경(다크 테마로 인쇄해도 항상 라이트로 강제). `frontend/src/types/config.ts`(`DEFAULT_CONFIG`)/`backend/src/config.rs`(`Config::default()`)/`docs/CONFIG_SPEC.md`(스키마 예시) 세 곳 동시 수정 — 세 군데가 항상 값이 같아야 한다는 기존 설계(`config.rs` 파일 상단 주석) 그대로 유지.
+- **개선(사용자 요청): 내장 테마 8종 추가.** github-light/dark 2종뿐이던 걸 Dracula/Nord/Solarized(light/dark)/One Dark·Light/Gruvbox(light/dark medium) 8종 추가해 10종으로 — 각 테마의 공식 팔레트에서 `bg`/`fg`/`border`/`muted`/`accent` 5토큰을 가져옴. 테마 이름을 Shiki의 내장 테마 ID와 정확히 맞춰서(Shiki가 이미 전부 번들하고 있음) 코드 하이라이팅 배색도 추가 매핑 없이 그대로 따라감(M4의 기존 설계 그대로 확장). `resolveThemeTokens`는 이진 분기에서 `Record<string, ThemeTokens>` 조회 테이블로, `isLightTheme`는 `LIGHT_THEMES` Set 기반으로 일반화 — `core/lazy/mermaid.ts`의 `mermaidThemeOf`가 이 `isLightTheme`를 그대로 재사용하는 구조라 mermaid 쪽 수정 없이 새 테마들에도 자동 적용됨. `docs/CONFIG_SPEC.md`에 `theme` 필드 전체 허용값 목록 신규 추가. 검증: Vitest에 테마별 테스트 추가(30→49개), Shiki `codeToHtml`을 10개 테마 전부에 직접 호출해서 이름 오타 없음 실측 확인. 상세: `HANDOFF.md`.
 
 ---
 
@@ -393,10 +396,14 @@ M6(Tauri 통합)에서 분리. 통합이 끝난 뒤 마지막에 하는 게 맞�
   2. **바이너리/`.desktop`이 전부 `app`이라는 이름**(`Exec=app`/`Icon=app`/`StartupWMClass=app`, `/usr/bin/app`) — `[package] name`을 `app` → `lightmark`로 변경해서 정리(`[lib] name = "app_lib"`는 안 건드림, `main.rs`의 `app_lib::run()`과 무관).
   3. **dock 아이콘 불일치 우려**(런타임 GTK app_id는 `dev.lightmark.viewer`인데 `.desktop` 파일명/`StartupWMClass`는 다름) — 재빌드 후 실제 설치해서 사용자가 직접 확인, **문제없이 정상 표시됨**. dev 모드에서 오래 보류돼 있던 dock 아이콘 미표시 문제는 실제 패키징 경로에서는 재현 안 되는 것으로 결론.
   - **라이선스 호환성 검토**: MIT로 확정하기 전, 실제 배포 바이너리에 들어가는 Rust 499개(`cargo metadata`, 기본 feature) + npm 165개(`package-lock.json`의 `dev: true` 제외 프로덕션만) 전수 대조 — GPL/AGPL/LGPL 없음 확인(MPL-2.0 몇 개는 파일 단위 약한 copyleft라 무수정 의존성으로는 무관, GTK/WebKitGTK는 동적 링크라 LGPL 예외 적용). 저장소 루트에 `THIRD-PARTY-NOTICES.md` 생성(662개 패키지, 라이선스 타입 11종별로 실제 설치 파일에서 추출한 전문 1회 + 패키지 목록) — 상세: `HANDOFF.md`. `LICENSE`/`THIRD-PARTY-NOTICES.md`를 실제 `.deb` 안에 포함시킬지는 **"그럴 필요 없어"로 확정** — 저장소에만 두는 현재 상태 유지, `bundle.resources`/`deb.files` 추가 안 함.
-- 시작 시간 < 1s, 일반 문서 메모리 < 30MB 실측 — 디버그 빌드가 아니라 실제 릴리스 바이너리로 측정해야 의미 있는 수치가 나온다. **아직 미착수** (macOS/Linux 둘 다).
-- 코드 서명/배포 채널 등 실제 릴리스 절차 — Windows 패키징 자체가 아직 미착수.
+- **시작 시간 < 1s, 일반 문서 메모리 < 30MB 실측 — 사용자 결정으로 생략.** "성능은 충분히 좋아. 따로 측정할 필요 없어." 실사용 체감으로 목표 충족 판단, 별도 벤치마크 진행 안 함.
+- **Windows 패키징 — 크로스 빌드는 기각, 실제 Windows 머신에서 네이티브 빌드 필요.** Tauri가 Windows 크로스 컴파일을 공식 지원하지 않음(WebView2 COM ABI가 MSVC/GNU 타깃 간 다름, MSI/WiX는 리눅스 네이티브 툴체인이 없음) — 코드 자체는 유닉스 전용 경로가 없어 깨끗함을 확인했으나, `gcc-mingw-w64-x86-64` 설치 직전에 사용자가 크로스 빌드 시도를 취소함. 실제 Windows 머신 준비사항(Rust+MSVC Build Tools, Node.js, `tauri.conf.json`의 `bundle.targets`를 Windows용으로 변경 필요, 서명 인증서 없으면 SmartScreen 경고 예상, single-instance 플러그인의 Windows 전용 재진입 콜백 스레드 실기 확인 필요)은 정리해서 전달함 — 상세: `HANDOFF.md`.
 
-**검증**: `npm run tauri build` 성공(macOS `.app`/`.dmg`, Linux `.deb` 둘 다). 패키징된 결과물을 실제로 설치해서 실행/D-Bus 등록/dock 아이콘까지 재확인 완료. 시작 시간/메모리 실측치를 `CLAUDE.md`의 목표(<1s, <30MB)와 비교해 기록하는 것만 남음.
+**검증**: `npm run tauri build` 성공(macOS `.app`/`.dmg`, Linux `.deb` 둘 다). 패키징된 결과물을 실제로 설치해서 실행/D-Bus 등록/dock 아이콘까지 재확인 완료. 성능 실측은 위 결정으로 생략. Windows는 실제 머신에서 진행할 때 마무리.
+
+**패치 릴리스 0.1.1 (사용자 요청)**: 하이퍼링크/타이틀바 버그 수정 반영해서 버전을 0.1.0 → 0.1.1로 올림(`package.json`/`frontend/package.json`/`src-tauri/tauri.conf.json`/`src-tauri/Cargo.toml` + `README.md`, `backend/Cargo.toml`은 앱 버전과 무관해서 제외) → `npm run tauri build`로 `LightMark_0.1.1_amd64.deb` 재생성 → 기존 0.1.0 설치본을 `sudo apt install`로 업그레이드해서 실행/D-Bus 등록까지 재확인. 상세: `HANDOFF.md`.
+
+**마이너 릴리스 0.2.0 (사용자 요청)**: 테마 10종 확장은 기능 추가라 0.1.1 → 0.2.0으로 올림(같은 파일들 + `README.md`의 테마 기능 설명/`theme` 필드 허용값 표도 이 김에 동기화). `LightMark_0.2.0_amd64.deb` 재생성 → 기존 0.1.1 설치본 업그레이드 확인 — 테마 10종이 포함된 첫 배포 빌드. 상세: `HANDOFF.md`.
 
 ---
 
@@ -417,6 +424,10 @@ macOS 콜드스타트에서 `setup()`이 `RunEvent::Opened`보다 먼저 실행�
 **macOS 세션에서 실기 검증 중 발견/수정한 버그**: 빈(pristine) 창에 파일을 여러 개 한꺼번에 drag&drop하면, 첫 파일이 그 창에 비동기로 로드되는 동안(`watch_file` 호출 전까지 pristine 플래그가 안 지워짐) 나머지 파일들의 `open_new_window` 호출이 거의 동시에 도착해 "지금 드롭 대상이 된 그 창 자신"을 pristine으로 오인해 재사용(`navigate()`)해버리는 레이스가 있었음 — IPC 커스텀 프로토콜이 끊겨 `Load failed` 에러, 결과적으로 창 하나에 파일 하나만 남음. `open_window(app, file, exclude)`에 `exclude` 파라미터를 추가해 "요청을 보낸 창 자신"을 재사용 후보에서 제외하도록 수정(`open_new_window` 커맨드가 자기 창 라벨을 넘김, 다른 4개 호출부는 OS 트리거라 "보낸 창" 자체가 없어 그대로 `None`). 수정 후 사용자가 실기로 재확인, 이 기회에 "drag&drop 다중 파일 → 첫 파일 교체 + 나머지 새 창" 동작 자체를 정식 결정으로 확정(위 (1) 참고). 상세: `HANDOFF.md`.
 
 **Linux에서도 drag&drop 다중 파일 실기 확인 완료(2026-08-14).** 리눅스는 `PristineWindow` 재사용 자체가 `cfg!(target_os = "macos")`로 비활성화돼 있어 위 레이스가 구조적으로 재현될 수 없는 조건이지만, "다중 파일 drag&drop 메커니즘 자체"는 Wayland 마우스 자동화 제약으로 이 저장소의 자동화 세션에서는 못 눌러봤던 부분 — 사용자가 이미 열린 창/빈 창 두 시나리오 모두 직접 drag&drop해서 확인("둘 다 확인했어, 문제없어"). Windows만 아직 미확인으로 남음.
+
+**버그 수정(사용자 리포트): Open/drag&drop으로 연 문서가 타이틀바에 파일명이 안 붙음.** `open_window()`가 제목을 창 **생성 시점**에만 정해서(더블클릭/CLI/"Open With"만 이 경로), 새 창을 안 만드는 툴바 Open/drag&drop(결정 #1: 그 창 내용만 교체)은 제목을 아무도 안 바꿔줌. `main.ts`의 `loadFile()`(모든 문서 로드 경로가 공유)에 `backend.setTitle()` 호출을 추가해 해결 — `BackendApi`에 `setTitle(title)`을 `openUrl`과 같은 이유(Web/Dev도 의미 있는 구현 가능)로 필수 메서드 추가, Tauri 쪽은 새 커맨드 없이 `core:window` API를 직접 호출(`capabilities/default.json`에 `core:window:allow-set-title` 추가 필요 - 이 API는 그 플러그인의 `default` 세트에 없음).
+
+**후속(사용자 리포트): 그래도 화면상 안 바뀜.** `tauri dev` 완전 재시작 후에도 재현. `loadFile()`을 `setTimeout`으로 직접 호출해 "이미 떠 있는 빈 창에 Open/drop"을 GUI 없이 재현하고 `title()` 되읽기를 임시로 추가해 확인한 결과, `setTitle()`은 성공하고 Tauri/GTK 내부 상태(`tao`의 `Window::title()`이 GTK 위젯에서 직접 읽는 라이브 값)까지 정확히 갱신됨 — 우리 구현은 정확함. WebSearch로 확인한 결과 **Tauri 자체의 Linux/Wayland 업스트림 버그**([tauri-apps/tauri#13749](https://github.com/tauri-apps/tauri/issues/13749) — `setTitle()`이 내부 상태/taskbar는 갱신하지만 GTK 헤더바 텍스트 리페인트는 안 함)와 증상이 정확히 일치. 사용자가 "알려진 한계로 받아들이고 넘어가기"로 확정 — 추가 코드 변경 없음. 상세: `HANDOFF.md`.
 
 ---
 

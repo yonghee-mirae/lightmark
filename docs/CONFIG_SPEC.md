@@ -23,6 +23,8 @@ Linux: ~/.config/LightMark/config.json
 }
 ```
 
+`theme`: 내장값 `"github-light"`(기본값) | `"github-dark"` | `"dracula"` | `"nord"` | `"solarized-light"` | `"solarized-dark"` | `"one-light"` | `"one-dark-pro"` | `"gruvbox-light-medium"` | `"gruvbox-dark-medium"`. 이 문자열이 Shiki의 내장 테마 이름과 정확히 일치해서(`docs/PLAN.md` M4) 코드 하이라이팅 배색도 별도 매핑 없이 그대로 따라간다. 인식 안 되는 값(오타, 아직 없는 테마)은 다크로 폴백한다(`frontend/src/core/theme.ts`의 `isLightTheme`/`THEMES`가 유일한 기준 — mermaid의 라이트/다크 자동 판단도 이 함수를 그대로 재사용).
+
 `mermaidTheme`: `"auto"`(기본값, `theme`을 보고 라이트/다크 자동 선택) | `"light"` | `"dark"`. `customCss`로 `theme`이 나타내는 것과 다른 배색으로 바꾼 경우 자동 선택이 틀릴 수 있어서, 이 값으로 mermaid 다이어그램의 라이트/다크를 `theme`과 무관하게 직접 지정할 수 있다.
 
 `viewerMaxWidth`: 뷰어 본문 최대 폭(px). 기본값 `0`은 "제한 없음" — 뷰어가 창 폭 전체를 그대로 채운다(word-wrap은 창 가장자리에서만 일어남). `0`보다 큰 값을 넣으면 본문이 그 폭으로 좁아지고 좌우 여백이 동일하게 가운데 정렬된다. on/off 스위치가 아니라 폭 값 자체를 사용자가 직접 정하는 방식(사용자 요청). TOC Toggle/Zoom과 달리 세션 중 바꿀 수 있는 UI 컨트롤 자체가 없음 — **편집은 config.json에서만** 가능하고, 상태바(파일명 오른쪽)는 현재 값을 `Width: Full`/`Width: {값}px`로 읽기 전용 표시만 한다(`CLAUDE.md`의 "No graphical settings editor"에 가장 가까운 필드).

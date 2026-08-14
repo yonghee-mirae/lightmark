@@ -9,6 +9,7 @@
 - reload_config()
 - open_config_folder()
 - open_new_window(path) — 멀티 윈도우 지원(아래 참고)에서 추가. 파일 하나를 새 창으로 여는 커맨드 - 한 창에 여러 파일을 한꺼번에 drag&drop했을 때, 첫 번째 파일은 그 창 내용을 바로 교체하고(기존 방식) 나머지 파일 각각에 대해 이 커맨드를 호출해 새 창을 연다.
+- open_url(url) — 문서 안 하이퍼링크(같은 문서 내 `#heading` 앵커 제외)를 OS 기본 브라우저로 여는 커맨드(사용자 리포트: 클릭하면 앱 자신의 창이 그 주소로 이동해버리던 버그 수정). `open_config_folder`와 같은 패턴 — `tauri-plugin-opener`의 `open_url` IPC 커맨드(ACL 스코프 있음)를 직접 호출하는 대신, `Opener` 확장 트레잇의 `open_url()`을 그대로 불러서 스코프 설정 없이 동작.
 
 `get_initial_path()`는 멀티 윈도우 지원 작업에서 제거됨 — 아래 "멀티 윈도우/인스턴스 지원" 참고.
 
@@ -37,6 +38,8 @@
 Web / Dev / Tauri 3개 구현체가 동일 인터페이스(BackendApi)를 만족한다(M6에서 TauriBackend 구현 완료).
 watch_file + unwatch_file은 프론트 표면에서 `watchFile(path, onChange): Unwatch` 하나로 합쳐진다.
 `onFileDrop()`/`openWindow()`는 `BackendApi`의 선택적(optional) 메서드로만 존재 — Web/Dev는 구현하지 않는다(창을 새로 열거나 네이티브 OS drag&drop을 받을 수 있는 게 Tauri뿐이라서).
+`openUrl(url)`은 위 둘과 달리 **필수** 메서드 — Web/Dev도 `window.open(url, '_blank', 'noopener,noreferrer')`로 똑같이 의미 있게 구현 가능해서(Tauri만의 OS 기능이 아님) optional로 둘 이유가 없음.
+`setTitle(title)`도 같은 이유로 필수 — Web/Dev는 `document.title`로, Tauri는 `@tauri-apps/api/window`의 `getCurrentWindow().setTitle()`(새 커맨드 아님, `core:window` API 직접 호출 - `capabilities/default.json`에 `core:window:allow-set-title` 필요, 이 플러그인의 `default` 퍼미션 세트엔 안 들어있음)로 구현.
 
 ## 멀티 윈도우/인스턴스 지원
 `tauri-plugin-single-instance`가 예전에는 두 번째 실행을 기존 창으로 라우팅했으나, LightMark는 뷰어이니 문서마다 별도 창을 띄울 수 있어야 한다는 사용자 결정으로 방향이 바뀜:
